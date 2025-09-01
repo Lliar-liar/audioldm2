@@ -1873,6 +1873,7 @@ class DiffusionWrapper(nn.Module):
         #     if(y is not None):
         #         print("y", y.size())
         #     self.being_verbosed_once = True
+        print(context_list)
         out = self.diffusion_model(
             xc, t, context_list=context_list, y=y, context_attn_mask_list=attn_mask_list
         )
