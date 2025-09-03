@@ -10,7 +10,7 @@ import traceback
 from audioldm2.utils import default_audioldm_config
 from audioldm2.utilities.audio.stft import TacotronSTFT
 # from audioldm2.utilities.audio.tools import wav_to_fbank
-torchaudio.set_audio_backend("ffmpeg")
+
 def setup_audioldm2_vae(gpu_id, repo_id="cvssp/audioldm2", torch_dtype=torch.float16):
     """
     加载并设置 AudioLDM 2 VAE 模型到指定的GPU上。
@@ -42,7 +42,7 @@ def _pad_spec(fbank, target_length=1024):
 
 def read_wav_file(filename, segment_length):
     # waveform, sr = librosa.load(filename, sr=None, mono=True) # 4 times slower
-    waveform, sr = torchaudio.load(filename,format="mp4")  # Faster!!!
+    waveform, sr = torchaudio.load(filename,format="mp4",backend="ffmpeg")  # Faster!!!
     waveform = torchaudio.functional.resample(waveform, orig_freq=sr, new_freq=16000)
     waveform = waveform.numpy()[0, ...]
     waveform = normalize_wav(waveform)
