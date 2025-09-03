@@ -146,6 +146,7 @@ def process_files_on_gpu(gpu_id, file_chunk, input_dir, output_dir):
     # --- 2. 遍历并处理分配给这个进程的文件 ---
     # 为每个GPU创建一个独立的进度条
     progress_bar = tqdm(file_chunk, desc=f"GPU-{gpu_id} 处理中", position=gpu_id)
+    config=default_audioldm_config()
     fn_STFT = TacotronSTFT(
         config["preprocessing"]["stft"]["filter_length"],
         config["preprocessing"]["stft"]["hop_length"],
