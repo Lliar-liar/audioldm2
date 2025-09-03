@@ -87,8 +87,7 @@ print("开始解码过程...")
 with torch.no_grad():
     # --- 步骤 4a: 使用 VAE 解码器 ---
     print("步骤 1/2: 使用 VAE 解码器将潜在表示转为梅尔频谱图...")
-    scaling_factor = vae.config.scaling_factor
-    decoded_mel = vae.decode(latent_tensor / scaling_factor, return_dict=False)[0]
+    decoded_mel = vae.decode(latent_tensor).sample
     print(f"VAE 解码后得到的原始梅尔频谱图形状: {decoded_mel.shape}")
     
     # --- 步骤 4b: 重塑梅尔频谱图以适配声码器 (修正部分) ---
@@ -105,28 +104,18 @@ with torch.no_grad():
     if mel_squeezed.dim() == 2:
         mel_squeezed = mel_squeezed.unsqueeze(0)
         
-
-    mel_reshaped = mel_squeezed.permute(0, 1, 2)
     
     print(f"重塑后送入声码器的梅尔频谱图形状: {mel_reshaped.shape}")
 
     # --- 步骤 4c: 使用声码器生成波形 ---
     print("步骤 2/2: 使用声码器将梅尔频谱图合成为音频波形...")
     # 确保调用时没有 return_dict 参数
-    waveform = vocoder(mel_reshaped)[0]
+    waveform = pipe.mel_spectrogram_to_waveform(mel_squeezed)
+    waveform =waveform.squeeze().detach().cpu().numpy().astype(np.float32)
 
-print("解码和合成完成！")
-print(waveform.shape)
-# --- 5. 后处理并保存 WAV 文件 ---
-print(f"正在将音频保存到 '{output_audio_path}'...")
-waveform_np = waveform.squeeze().cpu().numpy()
+scipy.io.wavfile.write(output_audio_path, rate=SAMPLING_RATE, data=waveform)
 
-sampling_rate = vocoder.config.sampling_rate
 
-print(sampling_rate)
-waveform_int16 = (waveform_np * 32767).astype(np.int16)
-print(waveform_int16)
-write(output_audio_path, sampling_rate, waveform_int16)
 
 print("\n--- 操作成功 ---")
 print(f"从 latent 文件还原的音频已成功保存为 '{output_audio_path}'。")

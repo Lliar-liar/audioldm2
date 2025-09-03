@@ -110,7 +110,7 @@ def encode_audio_from_video(
         if np.isnan(audio_array).any() or np.isinf(audio_array).any():
             return None, f"INVALID_AUDIO (NaN/Inf) in {os.path.basename(video_path)}"
 
-        # 3. 【优化】将NumPy数组转换为PyTorch Tensor（这是唯一必要的转换）
+
         waveform = torch.from_numpy(audio_array.copy()).float()
         
         # 4. 【优化】调用高效的内存计算函数

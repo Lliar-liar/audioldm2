@@ -121,6 +121,7 @@ def reconstruct_audio_with_vae(
     # ------------------------------------------------
     # 将Torch Tensor转换为Numpy数组以便保存。
     reconstructed_waveform_np = reconstructed_waveform.squeeze().detach().cpu().numpy().astype(np.float32)
+    waveform
     
     # 保存为WAV文件
     print(f"正在保存重建后的音频到: {output_wav}")
