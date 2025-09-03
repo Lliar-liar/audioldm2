@@ -39,7 +39,10 @@ def _pad_spec(fbank, target_length=1024):
 
     return fbank
 
-
+def normalize_wav(waveform):
+    waveform = waveform - np.mean(waveform)
+    waveform = waveform / (np.max(np.abs(waveform)) + 1e-8)
+    return waveform * 0.5
 def read_wav_file(filename, segment_length):
     # waveform, sr = librosa.load(filename, sr=None, mono=True) # 4 times slower
     waveform, sr = torchaudio.load(filename,format="mp4",backend="ffmpeg")  # Faster!!!
