@@ -19,7 +19,7 @@ def reconstruct_audio_with_vae(
     input_wav: str,
     output_wav: str,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
-    dtype: torch.dtype = torch.float32
+    dtype: torch.dtype = torch.float16
 ):
     """
     使用 AudioLDM2 的 VAE 对音频文件进行编码和解码。
@@ -77,7 +77,7 @@ def reconstruct_audio_with_vae(
     )
     print(f"声谱图Tensor的形状: {mel.shape}")
 
-    mel=mel.unsqueeze(0).unsqueeze(0).to(device)
+    mel=mel.unsqueeze(0).unsqueeze(0).to(device).to(dtype)
     print("正在使用 VAE 编码...")
     with torch.no_grad():
         # .latent_dist 包含了潜在空间的分布（均值和方差）
