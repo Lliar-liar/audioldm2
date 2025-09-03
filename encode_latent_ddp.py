@@ -13,7 +13,7 @@ import traceback
 from audioldm2.utils import default_audioldm_config
 from audioldm2.utilities.audio.stft import TacotronSTFT
 
-# ========== 音频处理函数保持不变 ==========
+# ========== 以下音频处理函数保持不变 ==========
 def get_mel_from_wav(audio, _stft):
     audio = torch.clip(torch.FloatTensor(audio).unsqueeze(0), -1, 1)
     audio = torch.autograd.Variable(audio, requires_grad=False)
@@ -38,13 +38,16 @@ def pad_wav(waveform, segment_length):
 def _pad_spec(fbank, target_length=1024):
     n_frames = fbank.shape[0]
     p = target_length - n_frames
+    # cut and pad
     if p > 0:
         m = torch.nn.ZeroPad2d((0, 0, 0, p))
         fbank = m(fbank)
     elif p < 0:
         fbank = fbank[0:target_length, :]
+
     if fbank.size(-1) % 2 != 0:
         fbank = fbank[..., :-1]
+
     return fbank
 
 def normalize_wav(waveform):
@@ -89,35 +92,24 @@ def encode_audio_from_video(video_path, vae, fn_STFT, device):
         error_message = f"处理文件 '{os.path.basename(video_path)}' 时发生错误: {e}\n{traceback.format_exc()}"
         return None, error_message
 
-# ========== 改进的Dataset类，支持多个目录 ==========
-class MultiDirectoryVideoDataset(Dataset):
-    """支持多个目录的数据集类"""
-    def __init__(self, video_directory_list, input_base_dir, output_base_dir):
-        self.files = []
-        
-        for video_dir in video_directory_list:
-            input_dir = os.path.join(input_base_dir, video_dir)
-            output_dir = os.path.join(output_base_dir, video_dir)
-            
-            # 确保输出目录存在
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir, exist_ok=True)
-            
-            # 收集该目录下的所有文件
-            for filename in sorted(os.listdir(input_dir)):
-                if filename.lower().endswith(".mp4"):
-                    video_path = os.path.join(input_dir, filename)
-                    base_name = os.path.splitext(filename)[0]
-                    output_path = os.path.join(output_dir, f"{base_name}.npy")
-                    self.files.append((video_path, output_path, video_dir))
-        
-        print(f"总计找到 {len(self.files)} 个视频文件")
+# ========== 以下为DDP相关新增/修改的代码 ==========
+
+class VideoDataset(Dataset):
+    """简单的数据集类用于加载视频文件路径"""
+    def __init__(self, input_dir, output_dir):
+        self.input_dir = input_dir
+        self.output_dir = output_dir
+        self.files = sorted([f for f in os.listdir(input_dir) if f.lower().endswith(".mp4")])
         
     def __len__(self):
         return len(self.files)
     
     def __getitem__(self, idx):
-        return self.files[idx]
+        filename = self.files[idx]
+        video_path = os.path.join(self.input_dir, filename)
+        base_name = os.path.splitext(filename)[0]
+        output_path = os.path.join(self.output_dir, f"{base_name}.npy")
+        return video_path, output_path
 
 def setup_ddp(rank, world_size):
     """初始化DDP环境"""
@@ -135,7 +127,7 @@ def setup_audioldm2_vae_ddp(rank, repo_id="cvssp/audioldm2", torch_dtype=torch.f
     device = torch.device(f"cuda:{rank}")
     
     if rank == 0:
-        print(f"[Rank {rank}]: 正在加载 AudioLDM 2 模型（仅加载一次）...")
+        print(f"[Rank {rank}]: 正在加载 AudioLDM 2 模型...")
     
     pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch_dtype, resume_download=True)
     pipe = pipe.to(device)
@@ -145,31 +137,19 @@ def setup_audioldm2_vae_ddp(rank, repo_id="cvssp/audioldm2", torch_dtype=torch.f
     
     return pipe.vae, pipe.feature_extractor, device
 
-def process_all_directories_ddp(rank, world_size, video_directory_list, input_base_dir, output_base_dir):
-    """DDP工作函数，一次性处理所有目录"""
+def process_batch_ddp(rank, world_size, input_dir, output_dir):
+    """DDP工作函数，处理分配给当前rank的数据"""
     # 设置DDP
     setup_ddp(rank, world_size)
     
     try:
-        # 加载模型（只加载一次）
+        # 加载模型
         vae, _, device = setup_audioldm2_vae_ddp(rank)
         
-        # 创建包含所有目录的数据集
-        dataset = MultiDirectoryVideoDataset(video_directory_list, input_base_dir, output_base_dir)
-        
-        # 创建分布式采样器
+        # 创建数据集和分布式采样器
+        dataset = VideoDataset(input_dir, output_dir)
         sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False)
-        
-        # 批次大小设为1，因为视频文件通常较大
-        dataloader = DataLoader(
-            dataset, 
-            batch_size=1, 
-            sampler=sampler, 
-            num_workers=2,  # 适度的worker数量
-            pin_memory=True,
-            prefetch_factor=2,
-            persistent_workers=True
-        )
+        dataloader = DataLoader(dataset, batch_size=16, sampler=sampler, num_workers=8)
         
         # 设置STFT
         config = default_audioldm_config()
@@ -185,56 +165,27 @@ def process_all_directories_ddp(rank, world_size, video_directory_list, input_ba
         
         error_count = 0
         success_count = 0
-        current_dir = None
-        dir_stats = {}
         
         # 只在rank 0显示进度条
-        iterator = tqdm(dataloader, desc=f"Rank {rank} 处理中", total=len(dataloader)) if rank == 0 else dataloader
+        iterator = tqdm(dataloader, desc=f"Rank {rank} 处理中") if rank == 0 else dataloader
         
-        for batch in iterator:
-            video_path, output_path, video_dir = batch
+        for video_path, output_path in iterator:
             video_path = video_path[0]  # 解包batch
             output_path = output_path[0]
-            video_dir = video_dir[0]
-            
-            # 检测目录变化，用于显示进度
-            if current_dir != video_dir:
-                if current_dir is not None and rank == 0:
-                    print(f"\n[Rank {rank}] 完成目录: {current_dir}")
-                current_dir = video_dir
-                if rank == 0:
-                    print(f"\n[Rank {rank}] 开始处理目录: {video_dir}")
-                
-                # 初始化目录统计
-                if video_dir not in dir_stats:
-                    dir_stats[video_dir] = {'success': 0, 'error': 0}
             
             # 如果文件已存在则跳过
-            if os.path.exists(output_path):
-                success_count += 1
-                dir_stats[video_dir]['success'] += 1
-                continue
+            # if os.path.exists(output_path):
+            #     continue
             
-            # 处理文件
             latent_np, status = encode_audio_from_video(video_path, vae, fn_STFT, device)
             
             if status == "SUCCESS" and latent_np is not None:
-                try:
-                    # 确保目录存在
-                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                    np.save(output_path, latent_np)
-                    success_count += 1
-                    dir_stats[video_dir]['success'] += 1
-                except Exception as e:
-                    if rank == 0:
-                        print(f"[Rank {rank}] 保存失败: {e}")
-                    error_count += 1
-                    dir_stats[video_dir]['error'] += 1
+                np.save(output_path, latent_np)
+                success_count += 1
             else:
                 if rank == 0:
                     print(f"[Rank {rank} 错误]: {status}")
                 error_count += 1
-                dir_stats[video_dir]['error'] += 1
         
         # 收集所有rank的统计信息
         error_tensor = torch.tensor([error_count], device=device)
@@ -244,13 +195,7 @@ def process_all_directories_ddp(rank, world_size, video_directory_list, input_ba
         dist.all_reduce(success_tensor, op=dist.ReduceOp.SUM)
         
         if rank == 0:
-            print("\n" + "="*50)
-            print("处理完成，详细统计：")
-            print("="*50)
-            for video_dir in dir_stats:
-                print(f"{video_dir}: 成功 {dir_stats[video_dir]['success']}, 失败 {dir_stats[video_dir]['error']}")
-            print("="*50)
-            print(f"总计成功处理: {success_tensor.item()} 个文件")
+            print(f"\n总计成功处理: {success_tensor.item()} 个文件")
             print(f"总计处理失败: {error_tensor.item()} 个文件")
             
     except Exception as e:
@@ -259,8 +204,8 @@ def process_all_directories_ddp(rank, world_size, video_directory_list, input_ba
     finally:
         cleanup()
 
-def batch_process_all_videos_ddp(video_directory_list, input_base_dir, output_base_dir):
-    """主函数：一次性使用DDP处理所有目录的视频"""
+def batch_process_videos_ddp(input_dir, output_dir):
+    """主函数：使用DDP处理视频"""
     # 检查GPU数量
     if not torch.cuda.is_available():
         print("错误：未检测到CUDA设备。")
@@ -268,23 +213,29 @@ def batch_process_all_videos_ddp(video_directory_list, input_base_dir, output_ba
     
     world_size = torch.cuda.device_count()
     print(f"检测到 {world_size} 块可用的GPU，将使用DDP进行处理。")
-    print(f"待处理的目录数量: {len(video_directory_list)}")
-    print(f"目录列表: {video_directory_list}")
     
-    # 确保基础输出目录存在
-    if not os.path.exists(output_base_dir):
-        os.makedirs(output_base_dir)
-        print(f"已创建输出基础目录: {output_base_dir}")
+    # 检查并创建输出目录
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        print(f"已创建输出目录: {output_dir}")
     
-    # 使用spawn启动DDP进程（只启动一次）
+    # 检查输入文件
+    all_files = [f for f in os.listdir(input_dir) if f.lower().endswith(".mp4")]
+    if not all_files:
+        print(f"在目录 '{input_dir}' 中没有找到 .mp4 文件。")
+        return
+    
+    print(f"在输入目录中找到 {len(all_files)} 个 .mp4 文件。")
+    
+    # 使用spawn启动DDP进程
     mp.spawn(
-        process_all_directories_ddp,
-        args=(world_size, video_directory_list, input_base_dir, output_base_dir),
+        process_batch_ddp,
+        args=(world_size, input_dir, output_dir),
         nprocs=world_size,
         join=True
     )
     
-    print("\n🎉 所有目录的视频处理完成！")
+    print("\n🎉 所有视频处理完成！")
 
 if __name__ == '__main__':
     # 设置多进程启动方法
@@ -293,23 +244,21 @@ if __name__ == '__main__':
     except RuntimeError:
         pass
     
-    # 所有待处理的目录列表
+    # video_directory_list=["vggsound_00_3s","vggsound_01_3s","vggsound_02_3s","vggsound_03_3s","vggsound_04_3s"]
     video_directory_list = ["vggsound_00_3s","vggsound_01_3s","vggsound_02_3s","vggsound_03_3s","vggsound_04_3s", 
     "vggsound_06_3s", "vggsound_07_3s", "vggsound_08_3s", "vggsound_09_3s",
         "vggsound_10_3s", "vggsound_11_3s", "vggsound_12_3s", "vggsound_13_3s", "vggsound_14_3s",
         "vggsound_15_3s", "vggsound_16_3s", "vggsound_17_3s", "vggsound_18_3s", "vggsound_19_3s",
     ]
-    
-    input_video_directory_base = "/blob/vggsound_cropped"
+    input_video_directory_base="/blob/vggsound_cropped"
     output_latent_directory_base = "/blob/vggsound_cropped_audio_latent_fixed"
     
-    # 一次性处理所有目录（模型只加载一次）
-    try:
-        batch_process_all_videos_ddp(
-            video_directory_list, 
-            input_video_directory_base, 
-            output_latent_directory_base
-        )
-    except Exception as e:
-        print(f"\n程序运行期间发生严重错误: {e}")
-        print(traceback.format_exc())
+    for video_dir in video_directory_list:
+        input_video_directory = os.path.join(input_video_directory_base, video_dir)
+        output_latent_directory = os.path.join(output_latent_directory_base, video_dir)
+        
+        try:
+            batch_process_videos_ddp(input_video_directory, output_latent_directory)
+        except Exception as e:
+            print(f"\n处理 {video_dir} 时发生严重错误: {e}")
+            print(traceback.format_exc())
