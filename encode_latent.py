@@ -7,6 +7,9 @@ import os
 import numpy as np
 from tqdm import tqdm
 import traceback
+from audioldm2.utils import default_audioldm_config
+from audioldm2.utilities.audio.stft import TacotronSTFT
+from audioldm2.utilities.audio.tools import wav_to_fbank
 
 def setup_audioldm2_vae(gpu_id, repo_id="cvssp/audioldm2", torch_dtype=torch.float16):
     """
@@ -35,17 +38,24 @@ def encode_audio_from_video(video_path, vae, feature_extractor, device):
             video_clip.audio.write_audiofile(temp_audio_path, codec='pcm_s16le', logger=None)
 
         # 2. 加载并预处理提取的音频
-        waveform, _ = librosa.load(temp_audio_path, sr=feature_extractor.sampling_rate, mono=True)
-        audio_inputs = feature_extractor(
-            waveform,
-            sampling_rate=feature_extractor.sampling_rate,
-            return_tensors="pt"
+        fn_STFT = TacotronSTFT(
+            config["preprocessing"]["stft"]["filter_length"],
+            config["preprocessing"]["stft"]["hop_length"],
+            config["preprocessing"]["stft"]["win_length"],
+            config["preprocessing"]["mel"]["n_mel_channels"],
+            config["preprocessing"]["audio"]["sampling_rate"],
+            config["preprocessing"]["mel"]["mel_fmin"],
+            config["preprocessing"]["mel"]["mel_fmax"],
         )
-        mel_spectrogram = audio_inputs.input_features.to(device, dtype=vae.dtype)
+        duration=3
+        # waveform = read_wav_file(original_audio_file_path, None)
+        mel, _, _ = wav_to_fbank(
+            temp_audio_path, target_length=int(duration * 102.4), fn_STFT=fn_STFT
+        )
 
         # 3. 使用 VAE 进行编码
         with torch.no_grad():
-            latent_representation = vae.encode(mel_spectrogram).latent_dist.sample()
+            latent_representation  = vae.encode(mel).latent_dist.mode()
         
         return latent_representation.cpu().numpy(), "SUCCESS"
 
@@ -161,7 +171,7 @@ if __name__ == '__main__':
     except RuntimeError:
         pass
         
-    video_directory_list=["vggsound_15_3s","vggsound_16_3s","vggsound_17_3s","vggsound_18_3s","vggsound_19_3s"]
+    video_directory_list=["vggsound_00_3s","vggsound_01_3s","vggsound_02_3s","vggsound_03_3s","vggsound_04_3s"]
     input_video_directory_base="/blob/vggsound_cropped"
     output_latent_directory_base = "/blob/vggsound_cropped_audio_latent"
     # --------------------------
