@@ -94,7 +94,7 @@ def wav_to_fbank(filename, target_length=1024, fn_STFT=None):
     return fbank, log_magnitudes_stft, waveform
 
 
-def encode_audio_from_video(video_path, vae, feature_extractor, device):
+def encode_audio_from_video(video_path, vae, fn_STFT, device):
     """
     从单个视频文件中提取音频，并使用给定的 VAE 将其编码为潜在表示。
     """
@@ -104,15 +104,7 @@ def encode_audio_from_video(video_path, vae, feature_extractor, device):
  
         config=default_audioldm_config()
         # 2. 加载并预处理提取的音频
-        fn_STFT = TacotronSTFT(
-            config["preprocessing"]["stft"]["filter_length"],
-            config["preprocessing"]["stft"]["hop_length"],
-            config["preprocessing"]["stft"]["win_length"],
-            config["preprocessing"]["mel"]["n_mel_channels"],
-            config["preprocessing"]["audio"]["sampling_rate"],
-            config["preprocessing"]["mel"]["mel_fmin"],
-            config["preprocessing"]["mel"]["mel_fmax"],
-        )
+        
         duration=3
         # waveform = read_wav_file(original_audio_file_path, None)
         mel, _, _ = wav_to_fbank(
@@ -143,7 +135,7 @@ def process_files_on_gpu(gpu_id, file_chunk, input_dir, output_dir):
     """
     # --- 1. 在当前进程中设置模型 ---
     try:
-        vae, feature_extractor, device = setup_audioldm2_vae(gpu_id)
+        vae, _ , device = setup_audioldm2_vae(gpu_id)
     except Exception as e:
         print(f"[GPU-{gpu_id}]: 模型加载失败: {e}")
         return len(file_chunk), 0 # 返回错误，表示所有文件都失败了
@@ -154,6 +146,15 @@ def process_files_on_gpu(gpu_id, file_chunk, input_dir, output_dir):
     # --- 2. 遍历并处理分配给这个进程的文件 ---
     # 为每个GPU创建一个独立的进度条
     progress_bar = tqdm(file_chunk, desc=f"GPU-{gpu_id} 处理中", position=gpu_id)
+    fn_STFT = TacotronSTFT(
+        config["preprocessing"]["stft"]["filter_length"],
+        config["preprocessing"]["stft"]["hop_length"],
+        config["preprocessing"]["stft"]["win_length"],
+        config["preprocessing"]["mel"]["n_mel_channels"],
+        config["preprocessing"]["audio"]["sampling_rate"],
+        config["preprocessing"]["mel"]["mel_fmin"],
+        config["preprocessing"]["mel"]["mel_fmax"],
+    )
     
     for filename in progress_bar:
         video_path = os.path.join(input_dir, filename)
@@ -163,7 +164,7 @@ def process_files_on_gpu(gpu_id, file_chunk, input_dir, output_dir):
         # if os.path.exists(output_path):
         #     continue
 
-        latent_np, status = encode_audio_from_video(video_path, vae, feature_extractor, device)
+        latent_np, status = encode_audio_from_video(video_path, vae, fn_STFT, device)
 
         if status == "SUCCESS" and latent_np is not None:
             np.save(output_path, latent_np)
