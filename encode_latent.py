@@ -36,7 +36,7 @@ def encode_audio_from_video(video_path, vae, feature_extractor, device):
                 return None, "NO_AUDIO"
             # logger=None 
             video_clip.audio.write_audiofile(temp_audio_path, codec='pcm_s16le', logger=None)
-
+        config=default_audioldm_config()
         # 2. 加载并预处理提取的音频
         fn_STFT = TacotronSTFT(
             config["preprocessing"]["stft"]["filter_length"],
