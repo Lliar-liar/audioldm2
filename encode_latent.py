@@ -9,7 +9,7 @@ from tqdm import tqdm
 import traceback
 from audioldm2.utils import default_audioldm_config
 from audioldm2.utilities.audio.stft import TacotronSTFT
-from audioldm2.utilities.audio.tools import wav_to_fbank
+# from audioldm2.utilities.audio.tools import wav_to_fbank
 
 def setup_audioldm2_vae(gpu_id, repo_id="cvssp/audioldm2", torch_dtype=torch.float16):
     """
