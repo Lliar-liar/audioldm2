@@ -113,7 +113,7 @@ class VideoDataset(Dataset):
 
 def setup_ddp(rank, world_size):
     """初始化DDP环境"""
-    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_ADDR'] = '127.0.0.1'
     os.environ['MASTER_PORT'] = '12355'
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
     torch.cuda.set_device(rank)
@@ -248,7 +248,7 @@ if __name__ == '__main__':
     video_directory_list=["vggsound_05_3s","vggsound_06_3s","vggsound_07_3s","vggsound_08_3s","vggsound_09_3s",
                           "vggsound_10_3s","vggsound_11_3s","vggsound_12_3s","vggsound_13_3s","vggsound_14_3s"]
     input_video_directory_base="/blob/vggsound_cropped"
-    output_latent_directory_base = "/blob/vggsound_cropped_audio_latent"
+    output_latent_directory_base = "/blob/vggsound_cropped_audio_latent_fixed"
     
     for video_dir in video_directory_list:
         input_video_directory = os.path.join(input_video_directory_base, video_dir)
