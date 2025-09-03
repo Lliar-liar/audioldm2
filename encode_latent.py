@@ -93,8 +93,8 @@ def process_files_on_gpu(gpu_id, file_chunk, input_dir, output_dir):
         base_name = os.path.splitext(filename)[0]
         output_path = os.path.join(output_dir, f"{base_name}.npy")
 
-        if os.path.exists(output_path):
-            continue
+        # if os.path.exists(output_path):
+        #     continue
 
         latent_np, status = encode_audio_from_video(video_path, vae, feature_extractor, device)
 
