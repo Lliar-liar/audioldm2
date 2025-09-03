@@ -72,8 +72,8 @@ def read_wav_file(filename, segment_length):
     return waveform
 
 def wav_to_fbank(filename, target_length, fn_STFT):
-    hop_size = fn_STFT.hop_size
-    waveform = read_wav_file(filename, target_length * hop_size)
+
+    waveform = read_wav_file(filename, target_length * 160)
     waveform = torch.FloatTensor(waveform[0, ...])
     fbank = get_mel_from_wav(waveform, fn_STFT)
     fbank = torch.FloatTensor(fbank.T)
@@ -158,7 +158,7 @@ def run_worker(rank, world_size, all_files, input_dir, output_dir, batch_size):
         dataset,
         batch_size=batch_size,
         sampler=sampler,
-        num_workers=4, # Adjust based on your CPU cores
+        num_workers=64, # Adjust based on your CPU cores
         pin_memory=True,
     )
     
