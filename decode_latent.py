@@ -16,7 +16,7 @@ parser.add_argument('--device', type=str, default='auto',
                     choices=['cuda', 'cpu', 'auto'],
                     help='运行设备 (默认: auto)')
 args = parser.parse_args()
-
+origin_video_base_dir="/blob/vggsound_cropped/"
 # --- 1. 设置文件路径 ---
 input_latent_path = args.input_latent_path
 output_audio_path = args.output_audio_path
