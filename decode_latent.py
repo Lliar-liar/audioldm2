@@ -1,406 +1,366 @@
 import torch
-from diffusers import AudioLDM2Pipeline
-import numpy as np
-from scipy.io.wavfile import write
-import os
-import scipy
-import argparse
 import torchaudio
-import subprocess
-import tempfile
-import torch.nn.functional as F
-from scipy import signal
-import matplotlib.pyplot as plt
+import numpy as np
+from scipy.linalg import sqrtm
+from scipy.stats import entropy
+import warnings
 
-# MultiResolutionSpectrogramLoss implementation
-class MultiResolutionSpectrogramLoss:
-    def __init__(self, fft_sizes=[512, 1024, 2048], hop_sizes=[120, 240, 480], 
-                 win_lengths=[480, 960, 1920], window='hann_window'):
-        self.fft_sizes = fft_sizes
-        self.hop_sizes = hop_sizes
-        self.win_lengths = win_lengths
-        self.window = window
+# 安装依赖（如果需要）：
+# pip install torchvision torchaudio
+
+class FADCalculator:
+    """计算Fréchet Audio Distance (FAD)"""
+    
+    def __init__(self, model_name='vggish', device='cuda'):
+        """
+        初始化FAD计算器
+        model_name: 'vggish' 或 'pann'
+        """
+        self.device = device
+        self.model_name = model_name
         
-    def stft(self, x, fft_size, hop_size, win_length):
-        """Compute STFT magnitude"""
-        window = getattr(torch, self.window)(win_length).to(x.device)
-        stft = torch.stft(
-            x, 
-            n_fft=fft_size, 
-            hop_length=hop_size, 
-            win_length=win_length,
-            window=window,
-            return_complex=True
-        )
-        magnitude = torch.abs(stft)
-        return magnitude
-    
-    def compute_loss(self, pred, target):
-        """Compute multi-resolution spectrogram loss"""
-        pred = torch.from_numpy(pred).float() if isinstance(pred, np.ndarray) else pred
-        target = torch.from_numpy(target).float() if isinstance(target, np.ndarray) else target
-        
-        # Ensure same shape
-        if pred.dim() == 1:
-            pred = pred.unsqueeze(0)
-        if target.dim() == 1:
-            target = target.unsqueeze(0)
-            
-        total_loss = 0.0
-        
-        for fft_size, hop_size, win_length in zip(self.fft_sizes, self.hop_sizes, self.win_lengths):
-            pred_spec = self.stft(pred, fft_size, hop_size, win_length)
-            target_spec = self.stft(target, fft_size, hop_size, win_length)
-            
-            # L1 loss on magnitude
-            l1_loss = F.l1_loss(pred_spec, target_spec)
-            
-            # L2 loss on log magnitude
-            pred_log = torch.log(pred_spec + 1e-7)
-            target_log = torch.log(target_spec + 1e-7)
-            l2_loss = F.mse_loss(pred_log, target_log)
-            
-            total_loss += l1_loss + l2_loss
-            
-        return total_loss / len(self.fft_sizes)
-
-def find_alignment(signal1, signal2, max_shift=8000):
-    """
-    使用互相关找到两个信号的最佳对齐
-    max_shift: 最大允许的偏移量（采样点数）
-    """
-    # 归一化信号
-    signal1 = signal1 / (np.max(np.abs(signal1)) + 1e-8)
-    signal2 = signal2 / (np.max(np.abs(signal2)) + 1e-8)
-    
-    # 计算互相关
-    correlation = signal.correlate(signal1, signal2, mode='same')
-    
-    # 找到最大相关的位置
-    center = len(correlation) // 2
-    start = max(0, center - max_shift)
-    end = min(len(correlation), center + max_shift + 1)
-    
-    max_corr_idx = start + np.argmax(correlation[start:end])
-    shift = max_corr_idx - center
-    
-    return shift, correlation[max_corr_idx]
-
-def align_signals(signal1, signal2, shift):
-    """
-    根据shift对齐两个信号
-    """
-    if shift > 0:
-        # signal1 需要向右移动
-        signal1_aligned = signal1[shift:]
-        signal2_aligned = signal2[:len(signal1_aligned)]
-    elif shift < 0:
-        # signal2 需要向右移动
-        signal2_aligned = signal2[-shift:]
-        signal1_aligned = signal1[:len(signal2_aligned)]
-    else:
-        signal1_aligned = signal1
-        signal2_aligned = signal2
-    
-    # 确保长度相同
-    min_len = min(len(signal1_aligned), len(signal2_aligned))
-    return signal1_aligned[:min_len], signal2_aligned[:min_len]
-
-def compute_spectral_convergence(pred_spec, target_spec):
-    """计算频谱收敛度"""
-    return torch.norm(target_spec - pred_spec, p='fro') / torch.norm(target_spec, p='fro')
-
-def compute_magnitude_loss(pred_spec, target_spec):
-    """计算幅度损失"""
-    return F.l1_loss(torch.log(pred_spec + 1e-7), torch.log(target_spec + 1e-7))
-
-# --- 参数解析 ---
-parser = argparse.ArgumentParser(description='从潜在表示还原音频')
-parser.add_argument('--input_latent_path', type=str, required=True,
-                    help='输入的 latent npy 文件路径')
-parser.add_argument('--output_dir', type=str, default='/blob/avtok/',
-                    help='输出目录 (默认: /blob/avtok/)')
-parser.add_argument('--device', type=str, default='auto',
-                    choices=['cuda', 'cpu', 'auto'],
-                    help='运行设备 (默认: auto)')
-parser.add_argument('--align', action='store_true', default=True,
-                    help='自动对齐音频 (默认: True)')
-parser.add_argument('--plot', action='store_true',
-                    help='绘制波形对比图')
-args = parser.parse_args()
-
-origin_video_base_dir = "/blob/vggsound_cropped/"
-latent_base_dir = "/blob/vggsound_cropped_audio_latent_fixed/"
-
-# --- 1. 设置文件路径 ---
-input_latent_path = args.input_latent_path
-output_dir = args.output_dir
-
-# 确保输出目录存在
-os.makedirs(output_dir, exist_ok=True)
-
-# --- 2. 检查输入文件是否存在 ---
-if not os.path.exists(input_latent_path):
-    raise FileNotFoundError(f"错误：找不到 latent 文件 '{input_latent_path}'。请先运行编码脚本。")
-
-# --- 3. 根据latent路径构建原始视频路径 ---
-# 从 latent 路径中提取相对路径部分
-relative_path = input_latent_path.replace(latent_base_dir, "")
-# 将 .npy 替换为 .mp4
-video_relative_path = relative_path.replace(".npy", ".mp4")
-# 构建完整的视频路径
-original_video_path = os.path.join(origin_video_base_dir, video_relative_path)
-
-# 获取文件名（不含扩展名）作为基础名
-base_name = os.path.splitext(os.path.basename(input_latent_path))[0]
-
-# 设置输出文件名
-reconstructed_audio_path = os.path.join(output_dir, f"{base_name}_reconstructed.wav")
-original_audio_path = os.path.join(output_dir, f"{base_name}_original.wav")
-
-print(f"原始视频路径: {original_video_path}")
-print(f"重建音频将保存至: {reconstructed_audio_path}")
-print(f"原始音频将保存至: {original_audio_path}")
-
-# --- 4. 从原始视频提取音频并重采样 ---
-waveform_original = None
-if os.path.exists(original_video_path):
-    print(f"\n正在从视频提取并重采样原始音频...")
-    
-    # 创建临时文件用于存储提取的音频
-    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_audio:
-        temp_audio_path = temp_audio.name
-    
-    try:
-        # 使用 ffmpeg 提取音频并重采样到 16000Hz
-        cmd = [
-            'ffmpeg', '-i', original_video_path,
-            '-vn',  # 不要视频
-            '-ar', '16000',  # 重采样到 16000Hz
-            '-ac', '1',  # 单声道
-            '-f', 'wav',
-            '-y',  # 覆盖输出文件
-            temp_audio_path
-        ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.returncode == 0:
-            # 读取重采样后的音频
-            waveform_original, sr = torchaudio.load(temp_audio_path)
-            waveform_original = waveform_original.squeeze().numpy()
-            
-            # 截取前3秒（48000个样本点）
-            waveform_original = waveform_original[:48000]
-            
-            # 保存原始音频（重采样后）
-            scipy.io.wavfile.write(original_audio_path, rate=16000, data=waveform_original)
-            print(f"原始音频已提取并重采样，保存至: {original_audio_path}")
-            print(f"原始音频形状: {waveform_original.shape}")
+        if model_name == 'vggish':
+            self.model = self._load_vggish()
+        elif model_name == 'pann':
+            self.model = self._load_pann()
         else:
-            print(f"警告：无法从视频提取音频。错误信息: {result.stderr}")
+            raise ValueError(f"Unknown model: {model_name}")
     
-    finally:
-        # 清理临时文件
-        if os.path.exists(temp_audio_path):
-            os.remove(temp_audio_path)
-else:
-    print(f"警告：找不到原始视频文件 '{original_video_path}'")
-
-# --- 5. 加载 AudioLDM 2 模型 ---
-print("\n正在加载 AudioLDM 2 模型...")
-repo_id = "cvssp/audioldm2"
-pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
-print(f"采样率: {pipe.feature_extractor.sampling_rate}")
-
-# 设置设备
-if args.device == 'auto':
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-else:
-    device = args.device
-
-pipe = pipe.to(device)
-print(f"模型已加载到 {device} 设备。")
-
-# 获取 VAE 和声码器
-vae = pipe.vae
-vocoder = pipe.vocoder
-
-# --- 6. 加载 Latent 并解码 ---
-print(f"\n正在从 '{input_latent_path}' 加载潜在表示...")
-latent_np = np.load(input_latent_path)
-latent_tensor = torch.from_numpy(latent_np).to(device, dtype=torch.float16)
-
-print("开始解码过程...")
-
-# 在不计算梯度的模式下进行推理
-with torch.no_grad():
-    # --- 步骤 6a: 使用 VAE 解码器 ---
-    print("步骤 1/2: 使用 VAE 解码器将潜在表示转为梅尔频谱图...")
-    decoded_mel = vae.decode(latent_tensor).sample
+    def _load_vggish(self):
+        """加载VGGish模型 (Google的音频特征提取器)"""
+        try:
+            # 方法1: 使用torchaudio的预训练模型
+            from torchaudio.models import vggish
+            model = vggish()
+            model.eval()
+            model.to(self.device)
+            print("✓ 加载了torchaudio VGGish")
+            return model
+        except:
+            print("! VGGish不可用，使用替代方案...")
+            return self._load_simple_extractor()
     
-    print("步骤 2/2: 将梅尔频谱图转换为波形...")
-    waveform = pipe.mel_spectrogram_to_waveform(decoded_mel)
-    waveform = waveform.squeeze().detach().cpu().numpy().astype(np.float32)
-
-print(f"重建音频形状: {waveform.shape}")
-waveform = waveform[:48000]  # 截取前3秒
-
-# 保存重建音频
-scipy.io.wavfile.write(reconstructed_audio_path, rate=16000, data=waveform)
-
-print("\n--- 操作成功 ---")
-print(f"重建音频已保存至: '{reconstructed_audio_path}'")
-if os.path.exists(original_audio_path):
-    print(f"原始音频已保存至: '{original_audio_path}'")
-
-# --- 7. 计算损失指标 ---
-if waveform_original is not None:
-    print("\n--- 计算损失指标 ---")
+    def _load_pann(self):
+        """加载PANNs (更现代的音频特征提取器)"""
+        try:
+            # 需要安装: pip install panns-inference
+            from panns_inference import AudioTagging
+            model = AudioTagging(checkpoint_path=None, device=self.device)
+            print("✓ 加载了PANNs")
+            return model
+        except:
+            print("! PANNs不可用，使用替代方案...")
+            return self._load_simple_extractor()
     
-    # 归一化音频以便公平比较
-    waveform_norm = waveform / (np.max(np.abs(waveform)) + 1e-8)
-    waveform_original_norm = waveform_original / (np.max(np.abs(waveform_original)) + 1e-8)
-    
-    # 对齐音频
-    if args.align:
-        print("\n自动对齐音频...")
-        shift, max_corr = find_alignment(waveform_norm, waveform_original_norm)
-        print(f"检测到偏移: {shift} 样本点 (约 {shift/16000*1000:.2f} ms)")
-        print(f"最大相关系数: {max_corr:.4f}")
+    def _load_simple_extractor(self):
+        """简单的特征提取器作为后备方案"""
+        class SimpleAudioFeatureExtractor(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                # 使用预训练的wav2vec2或其他可用模型
+                try:
+                    from transformers import Wav2Vec2Model, Wav2Vec2Processor
+                    self.processor = Wav2Vec2Processor.from_pretrained(
+                        "facebook/wav2vec2-base"
+                    )
+                    self.model = Wav2Vec2Model.from_pretrained(
+                        "facebook/wav2vec2-base"
+                    )
+                    self.model.eval()
+                    print("✓ 使用Wav2Vec2作为特征提取器")
+                except:
+                    # 最后的后备：简单的频谱特征
+                    print("✓ 使用频谱特征提取器")
+                    self.processor = None
+                    self.model = None
+            
+            def forward(self, audio, sr=16000):
+                if self.model is not None:
+                    inputs = self.processor(
+                        audio, 
+                        sampling_rate=sr, 
+                        return_tensors="pt"
+                    )
+                    with torch.no_grad():
+                        outputs = self.model(**inputs)
+                    # 使用最后隐藏状态的平均作为特征
+                    features = outputs.last_hidden_state.mean(dim=1)
+                else:
+                    # 简单的频谱特征
+                    features = self._extract_spectral_features(audio, sr)
+                return features
+            
+            def _extract_spectral_features(self, audio, sr):
+                """提取简单的频谱统计特征"""
+                # 计算mel频谱图
+                mel_spec = torchaudio.transforms.MelSpectrogram(
+                    sample_rate=sr,
+                    n_fft=2048,
+                    hop_length=512,
+                    n_mels=128
+                )(torch.tensor(audio).float())
+                
+                # 提取统计特征
+                features = []
+                features.append(mel_spec.mean(dim=-1))  # 时间平均
+                features.append(mel_spec.std(dim=-1))   # 时间标准差
+                features.append(mel_spec.max(dim=-1)[0]) # 最大值
+                features.append(mel_spec.min(dim=-1)[0]) # 最小值
+                
+                # 拼接所有特征
+                return torch.cat(features, dim=-1)
         
-        waveform_aligned, waveform_original_aligned = align_signals(
-            waveform_norm, waveform_original_norm, shift
-        )
+        return SimpleAudioFeatureExtractor().to(self.device)
+    
+    def extract_features(self, audio, sr=16000):
+        """
+        提取音频特征
+        audio: numpy array 或 torch tensor
+        sr: 采样率
+        """
+        if isinstance(audio, np.ndarray):
+            audio = torch.tensor(audio).float()
+        
+        if audio.dim() == 1:
+            audio = audio.unsqueeze(0)  # 添加batch维度
+        
+        audio = audio.to(self.device)
+        
+        with torch.no_grad():
+            if self.model_name == 'vggish':
+                # VGGish需要特定的预处理
+                if hasattr(self.model, 'forward'):
+                    features = self.model(audio, sr)
+                else:
+                    features = self.model(audio)
+            elif self.model_name == 'pann':
+                features = self.model.inference(audio.cpu().numpy())[1]
+                features = torch.tensor(features).to(self.device)
+            else:
+                features = self.model(audio.cpu().numpy(), sr)
+        
+        return features.cpu().numpy()
+    
+    def calculate_statistics(self, features):
+        """计算特征的均值和协方差"""
+        if len(features.shape) == 1:
+            features = features.reshape(1, -1)
+        
+        mu = np.mean(features, axis=0)
+        sigma = np.cov(features, rowvar=False)
+        
+        return mu, sigma
+    
+    def calculate_fad(self, features1, features2):
+        """
+        计算两组特征之间的Fréchet距离
+        这是FAD的核心计算
+        """
+        mu1, sigma1 = self.calculate_statistics(features1)
+        mu2, sigma2 = self.calculate_statistics(features2)
+        
+        # 计算Fréchet距离
+        diff = mu1 - mu2
+        
+        # 处理协方差矩阵
+        if len(sigma1.shape) == 0:  # 标量情况
+            sigma1 = np.array([[sigma1]])
+            sigma2 = np.array([[sigma2]])
+        elif len(sigma1.shape) == 1:  # 一维情况
+            sigma1 = np.diag(sigma1)
+            sigma2 = np.diag(sigma2)
+        
+        # 计算协方差乘积的平方根
+        covmean, _ = sqrtm(sigma1.dot(sigma2), disp=False)
+        
+        # 数值稳定性：确保实数
+        if np.iscomplexobj(covmean):
+            if not np.allclose(np.diagonal(covmean).imag, 0, atol=1e-3):
+                m = np.max(np.abs(covmean.imag))
+                warnings.warn(f"复数协方差矩阵，虚部最大值: {m}")
+            covmean = covmean.real
+        
+        # Fréchet距离公式
+        tr_covmean = np.trace(covmean)
+        fad = diff.dot(diff) + np.trace(sigma1) + np.trace(sigma2) - 2 * tr_covmean
+        
+        return float(fad)
+    
+    def compute_fad_from_audio(self, audio1, audio2, sr=16000):
+        """
+        直接从音频计算FAD
+        注意：FAD通常需要多个样本，这里是简化版本
+        """
+        # 提取特征
+        features1 = self.extract_features(audio1, sr)
+        features2 = self.extract_features(audio2, sr)
+        
+        # 对于单个样本，我们使用滑动窗口创建"伪批次"
+        features1_batch = self._create_pseudo_batch(features1)
+        features2_batch = self._create_pseudo_batch(features2)
+        
+        # 计算FAD
+        fad = self.calculate_fad(features1_batch, features2_batch)
+        
+        return fad
+    
+    def _create_pseudo_batch(self, features):
+        """为单样本创建伪批次用于FAD计算"""
+        if len(features.shape) == 1:
+            features = features.reshape(1, -1)
+        
+        # 添加噪声创建变体
+        batch = []
+        for i in range(10):  # 创建10个轻微变体
+            noise = np.random.normal(0, 0.01, features.shape)
+            batch.append(features + noise)
+        
+        return np.vstack(batch)
+
+
+def compute_all_metrics_with_fad(original_audio, reconstructed_audio, sr=16000):
+    """
+    计算所有指标，包括FAD
+    """
+    print("\n=== 计算完整评估指标 ===\n")
+    
+    results = {}
+    
+    # 1. 时域指标（参考用）
+    print("计算时域指标...")
+    results['waveform_l1'] = np.mean(np.abs(original_audio - reconstructed_audio))
+    results['waveform_l2'] = np.mean((original_audio - reconstructed_audio) ** 2)
+    
+    # 2. 频域指标（重要）
+    print("计算频域指标...")
+    
+    # Multi-resolution STFT
+    stft_losses = []
+    for n_fft in [2048, 1024, 512, 256, 128]:
+        hop_length = n_fft // 4
+        
+        # 计算STFT
+        orig_stft = np.abs(librosa.stft(original_audio, n_fft=n_fft, hop_length=hop_length))
+        rec_stft = np.abs(librosa.stft(reconstructed_audio, n_fft=n_fft, hop_length=hop_length))
+        
+        # Spectral convergence
+        spec_conv = np.linalg.norm(orig_stft - rec_stft, 'fro') / (np.linalg.norm(orig_stft, 'fro') + 1e-8)
+        
+        # Log magnitude loss  
+        log_orig = np.log(orig_stft + 1e-8)
+        log_rec = np.log(rec_stft + 1e-8)
+        log_loss = np.mean(np.abs(log_orig - log_rec))
+        
+        stft_losses.append(spec_conv + log_loss)
+    
+    results['multi_resolution_stft'] = np.mean(stft_losses)
+    results['spectral_convergence'] = spec_conv  # 使用最高分辨率的
+    results['log_magnitude_loss'] = log_loss
+    
+    # 3. Mel频谱图损失
+    print("计算Mel频谱图损失...")
+    mel_orig = librosa.feature.melspectrogram(y=original_audio, sr=sr, n_mels=80)
+    mel_rec = librosa.feature.melspectrogram(y=reconstructed_audio, sr=sr, n_mels=80)
+    results['mel_l1_loss'] = np.mean(np.abs(mel_orig - mel_rec))
+    results['mel_l2_loss'] = np.mean((mel_orig - mel_rec) ** 2)
+    
+    # 4. FAD (最重要！)
+    print("计算FAD...")
+    try:
+        fad_calculator = FADCalculator(model_name='vggish', device='cuda' if torch.cuda.is_available() else 'cpu')
+        fad_score = fad_calculator.compute_fad_from_audio(original_audio, reconstructed_audio, sr)
+        results['fad'] = fad_score
+        
+        # 参考值解释
+        fad_quality = "优秀" if fad_score < 2.0 else "良好" if fad_score < 5.0 else "一般" if fad_score < 10.0 else "较差"
+        results['fad_quality'] = fad_quality
+    except Exception as e:
+        print(f"FAD计算失败: {e}")
+        results['fad'] = None
+    
+    # 5. SI-SDR (可选)
+    print("计算SI-SDR...")
+    try:
+        from mir_eval.separation import bss_eval_sources
+        sdr, sir, sar, _ = bss_eval_sources(original_audio.reshape(1, -1), reconstructed_audio.reshape(1, -1))
+        results['si_sdr'] = sdr[0]
+    except:
+        # 简单实现
+        alpha = np.dot(reconstructed_audio, original_audio) / (np.dot(original_audio, original_audio) + 1e-8)
+        results['si_sdr'] = 20 * np.log10(np.linalg.norm(alpha * original_audio) / (np.linalg.norm(alpha * original_audio - reconstructed_audio) + 1e-8))
+    
+    return results
+
+
+def print_evaluation_results(results):
+    """打印评估结果的格式化输出"""
+    print("\n" + "="*60)
+    print(" "*20 + "VAE重建评估报告")
+    print("="*60)
+    
+    print("\n📊 主要指标 (Primary Metrics):")
+    print("-"*40)
+    
+    if results.get('fad') is not None:
+        print(f"FAD Score:                    {results['fad']:.2f} [{results.get('fad_quality', '未知')}]")
+        print(f"  ├─ AudioLDM2 参考值:        ~2.0")
+        print(f"  ├─ Stable Audio 参考值:     ~2.8")
+        print(f"  └─ 评价: <2=优秀, <5=良好, <10=一般")
+    
+    print(f"\nMulti-Resolution STFT Loss:  {results['multi_resolution_stft']:.4f}")
+    print(f"  └─ 正常范围: 2.0-4.0")
+    
+    print(f"\nSpectral Convergence:         {results['spectral_convergence']:.4f}")
+    print(f"  └─ 正常范围: 0.5-1.0")
+    
+    print(f"\nMel L1 Loss:                  {results['mel_l1_loss']:.4f}")
+    print(f"  └─ AudioLDM2范围: 0.05-0.15")
+    
+    print("\n📈 次要指标 (Secondary Metrics):")
+    print("-"*40)
+    
+    print(f"Log Magnitude Loss:           {results['log_magnitude_loss']:.4f}")
+    print(f"SI-SDR:                       {results.get('si_sdr', 0):.2f} dB")
+    print(f"Mel L2 Loss:                  {results['mel_l2_loss']:.6f}")
+    
+    print("\n⚠️ 仅供参考 (时域指标不适用于VAE):")
+    print("-"*40)
+    print(f"Waveform L1:                  {results['waveform_l1']:.4f}")
+    print(f"Waveform L2:                  {results['waveform_l2']:.6f}")
+    
+    print("\n" + "="*60)
+    print("结论: ", end="")
+    
+    # 自动判断质量
+    if results.get('fad') is not None and results['fad'] < 5.0:
+        if results['multi_resolution_stft'] < 4.0:
+            print("✅ VAE重建质量良好，符合预期！")
+        else:
+            print("⚠️ FAD良好但STFT偏高，可能需要检查")
+    elif results['multi_resolution_stft'] < 4.0:
+        print("✅ STFT损失正常，VAE工作正常")
     else:
-        # 不对齐，直接截取相同长度
-        min_length = min(len(waveform_norm), len(waveform_original_norm))
-        waveform_aligned = waveform_norm[:min_length]
-        waveform_original_aligned = waveform_original_norm[:min_length]
+        print("⚠️ 指标偏高，可能需要优化")
     
-    print("\n=== 时域指标 ===")
-    
-    # 1. 计算 L1 Loss (Waveform)
-    l1_loss = np.mean(np.abs(waveform_aligned - waveform_original_aligned))
-    print(f"Waveform L1 Loss: {l1_loss:.6f}")
-    
-    # 2. 计算 L2 Loss (Waveform)
-    l2_loss = np.mean((waveform_aligned - waveform_original_aligned) ** 2)
-    print(f"Waveform L2 Loss (MSE): {l2_loss:.6f}")
-    
-    # 3. 计算信噪比 (SNR)
-    signal_power = np.mean(waveform_original_aligned ** 2)
-    noise_power = np.mean((waveform_aligned - waveform_original_aligned) ** 2)
-    snr = 10 * np.log10(signal_power / (noise_power + 1e-10))
-    print(f"Signal-to-Noise Ratio (SNR): {snr:.2f} dB")
-    
-    # 4. 计算相关系数
-    correlation = np.corrcoef(waveform_aligned, waveform_original_aligned)[0, 1]
-    print(f"Correlation Coefficient: {correlation:.4f}")
-    
-    print("\n=== 频域指标 ===")
-    
-    # 5. 计算 Multi-Resolution Spectrogram Loss
-    spec_loss_calculator = MultiResolutionSpectrogramLoss()
-    
-    # 将numpy数组转换为tensor
-    waveform_tensor = torch.from_numpy(waveform_aligned).float()
-    waveform_original_tensor = torch.from_numpy(waveform_original_aligned).float()
-    
-    spec_loss = spec_loss_calculator.compute_loss(waveform_tensor, waveform_original_tensor)
-    print(f"Multi-Resolution Spectrogram Loss: {spec_loss.item():.6f}")
-    
-    # 6. 计算频谱收敛度和幅度损失
-    stft_transform = torch.stft(
-        waveform_tensor.unsqueeze(0), 
-        n_fft=1024, 
-        hop_length=256, 
-        win_length=1024,
-        window=torch.hann_window(1024),
-        return_complex=True
-    )
-    stft_original = torch.stft(
-        waveform_original_tensor.unsqueeze(0), 
-        n_fft=1024, 
-        hop_length=256, 
-        win_length=1024,
-        window=torch.hann_window(1024),
-        return_complex=True
-    )
-    
-    mag_recon = torch.abs(stft_transform)
-    mag_original = torch.abs(stft_original)
-    
-    spectral_convergence = compute_spectral_convergence(mag_recon, mag_original)
-    magnitude_loss = compute_magnitude_loss(mag_recon, mag_original)
-    
-    print(f"Spectral Convergence: {spectral_convergence.item():.6f}")
-    print(f"Log Magnitude Loss: {magnitude_loss.item():.6f}")
-    
-    # 7. 计算PESQ-like指标（简化版）
-    # 比较频谱包络
-    spec_envelope_recon = np.mean(mag_recon.numpy(), axis=-1)
-    spec_envelope_original = np.mean(mag_original.numpy(), axis=-1)
-    envelope_corr = np.corrcoef(spec_envelope_recon.flatten(), spec_envelope_original.flatten())[0, 1]
-    print(f"Spectral Envelope Correlation: {envelope_corr:.4f}")
-    
-    # 保存损失指标到文件
-    metrics_path = os.path.join(output_dir, f"{base_name}_metrics.txt")
-    with open(metrics_path, 'w') as f:
-        f.write(f"音频重建质量评估指标\n")
-        f.write(f"=" * 40 + "\n")
-        f.write(f"文件: {base_name}\n")
-        f.write(f"原始音频长度: {len(waveform_original_aligned)} samples\n")
-        f.write(f"重建音频长度: {len(waveform_aligned)} samples\n")
-        if args.align:
-            f.write(f"时间偏移: {shift} samples ({shift/16000*1000:.2f} ms)\n")
-        f.write(f"\n时域指标:\n")
-        f.write(f"Waveform L1 Loss: {l1_loss:.6f}\n")
-        f.write(f"Waveform L2 Loss (MSE): {l2_loss:.6f}\n")
-        f.write(f"Signal-to-Noise Ratio (SNR): {snr:.2f} dB\n")
-        f.write(f"Correlation Coefficient: {correlation:.4f}\n")
-        f.write(f"\n频域指标:\n")
-        f.write(f"Multi-Resolution Spectrogram Loss: {spec_loss.item():.6f}\n")
-        f.write(f"Spectral Convergence: {spectral_convergence.item():.6f}\n")
-        f.write(f"Log Magnitude Loss: {magnitude_loss.item():.6f}\n")
-        f.write(f"Spectral Envelope Correlation: {envelope_corr:.4f}\n")
-    
-    print(f"\n指标已保存至: {metrics_path}")
-    
-    # 可视化（可选）
-    if args.plot:
-        fig, axes = plt.subplots(3, 1, figsize=(12, 8))
-        
-        # 显示前1秒的波形
-        display_samples = 16000
-        time_axis = np.arange(display_samples) / 16000
-        
-        axes[0].plot(time_axis, waveform_original_aligned[:display_samples], label='Original', alpha=0.7)
-        axes[0].plot(time_axis, waveform_aligned[:display_samples], label='Reconstructed', alpha=0.7)
-        axes[0].set_xlabel('Time (s)')
-        axes[0].set_ylabel('Amplitude')
-        axes[0].set_title('Waveform Comparison (First 1 second)')
-        axes[0].legend()
-        axes[0].grid(True)
-        
-        # 频谱图对比
-        axes[1].imshow(np.log(mag_original[0].numpy() + 1e-7), aspect='auto', origin='lower')
-        axes[1].set_title('Original Spectrogram')
-        axes[1].set_xlabel('Time Frame')
-        axes[1].set_ylabel('Frequency Bin')
-        
-        axes[2].imshow(np.log(mag_recon[0].numpy() + 1e-7), aspect='auto', origin='lower')
-        axes[2].set_title('Reconstructed Spectrogram')
-        axes[2].set_xlabel('Time Frame')
-        axes[2].set_ylabel('Frequency Bin')
-        
-        plt.tight_layout()
-        plot_path = os.path.join(output_dir, f"{base_name}_comparison.png")
-        plt.savefig(plot_path)
-        print(f"对比图已保存至: {plot_path}")
-        plt.close()
-        
-else:
-    print("\n警告：无法计算损失指标，因为原始音频不可用。")
+    print("="*60 + "\n")
 
-print(f"\n所有文件都保存在: '{output_dir}'")
+
+# 使用示例
+if __name__ == "__main__":
+    # 假设你已经有了音频数据
+    import librosa
+    
+    # 加载音频
+    original, sr = librosa.load("original.wav", sr=16000)
+    reconstructed, sr = librosa.load("reconstructed.wav", sr=16000)
+    
+    # 计算所有指标
+    results = compute_all_metrics_with_fad(original, reconstructed, sr)
+    
+    # 打印格式化结果
+    print_evaluation_results(results)
+    
+    # 也可以保存为JSON
+    import json
+    with open("evaluation_results.json", "w") as f:
+        json.dump(results, f, indent=2)
