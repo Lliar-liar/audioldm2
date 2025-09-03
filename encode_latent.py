@@ -10,7 +10,14 @@ import traceback
 from audioldm2.utils import default_audioldm_config
 from audioldm2.utilities.audio.stft import TacotronSTFT
 # from audioldm2.utilities.audio.tools import wav_to_fbank
-
+def get_mel_from_wav(audio, _stft):
+    audio = torch.clip(torch.FloatTensor(audio).unsqueeze(0), -1, 1)
+    audio = torch.autograd.Variable(audio, requires_grad=False)
+    melspec, magnitudes, phases, energy = _stft.mel_spectrogram(audio)
+    melspec = torch.squeeze(melspec, 0).numpy().astype(np.float32)
+    magnitudes = torch.squeeze(magnitudes, 0).numpy().astype(np.float32)
+    energy = torch.squeeze(energy, 0).numpy().astype(np.float32)
+    return melspec, magnitudes, energy
 def setup_audioldm2_vae(gpu_id, repo_id="cvssp/audioldm2", torch_dtype=torch.float16):
     """
     加载并设置 AudioLDM 2 VAE 模型到指定的GPU上。
