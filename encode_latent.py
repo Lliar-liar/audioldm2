@@ -208,18 +208,19 @@ def run_worker(rank, world_size, all_files, input_dir, output_dir, batch_size):
 
 def main():
     # --- Configuration ---
-    video_directory_list = [
-        "vggsound_05_3s", "vggsound_06_3s", "vggsound_07_3s", "vggsound_08_3s",
-        "vggsound_09_3s", "vggsound_10_3s", "vggsound_11_3s", "vggsound_12_3s",
-        "vggsound_13_3s", "vggsound_14_s"
-    ]
+    video_directory_list=["vggsound_00_3s"]
+    # video_directory_list = [
+    #     "vggsound_05_3s", "vggsound_06_3s", "vggsound_07_3s", "vggsound_08_3s",
+    #     "vggsound_09_3s", "vggsound_10_3s", "vggsound_11_3s", "vggsound_12_3s",
+    #     "vggsound_13_3s", "vggsound_14_s"
+    # ]
     input_video_directory_base = "/blob/vggsound_cropped"
     output_latent_directory_base = "/blob/vggsound_cropped_audio_latent"
     
     # --- Tunable Parameters ---
     # Per-GPU batch size. Total batch size will be (batch_size * num_gpus)
     # Adjust based on your VRAM. 32 or 64 is a good starting point.
-    batch_size = 64
+    batch_size = 16
     
     if not torch.cuda.is_available():
         print("CUDA is not available. This script requires multiple GPUs.")
