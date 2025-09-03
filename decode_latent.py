@@ -8,7 +8,7 @@ import os
 
 # --- 1. 设置文件路径 ---
 # 要读取的 latent npy 文件
-input_latent_path = "/blob/vggsound_cropped_audio_latent/vggsound_00_3s/0s4KwPvpnPo_000025_part_002.npy"
+input_latent_path = "/blob/vggsound_cropped_audio_latent/vggsound_00_3s/0s49D-LqHwg_000030_part_003.npy"
 # 输出的还原音频文件
 # output_audio_path = "reconstructed_from_latent.wav"
 output_audio_path = "/blob/avtok/recon.wav"
