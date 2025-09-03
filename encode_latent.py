@@ -185,7 +185,7 @@ def main_worker(rank, world_size, input_dir, output_dir):
     dataset = VideoDataset(all_files, input_dir, output_dir)
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False)
     # Batch size is 1 since we process one file at a time. num_workers can be increased.
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=64, pin_memory=True, sampler=sampler)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=16, pin_memory=True, sampler=sampler)
 
     # --- 3. Setup STFT utility ---
     config = default_audioldm_config()
