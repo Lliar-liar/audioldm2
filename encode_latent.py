@@ -19,12 +19,12 @@ from torch.utils.data.distributed import DistributedSampler
 
 def get_mel_from_wav(audio, _stft):
     audio = torch.clip(torch.FloatTensor(audio).unsqueeze(0), -1, 1)
-    audio = torch.autograd.Variable(audio, requires_grad=False)
+    # audio = torch.autograd.Variable(audio, requires_grad=False)
     melspec, magnitudes, phases, energy = _stft.mel_spectrogram(audio)
-    melspec = torch.squeeze(melspec, 0).numpy().astype(np.float32)
-    magnitudes = torch.squeeze(magnitudes, 0).numpy().astype(np.float32)
-    energy = torch.squeeze(energy, 0).numpy().astype(np.float32)
-    return melspec, magnitudes, energy
+    # melspec = torch.squeeze(melspec, 0).numpy().astype(np.float32)
+    # magnitudes = torch.squeeze(magnitudes, 0).numpy().astype(np.float32)
+    # energy = torch.squeeze(energy, 0).numpy().astype(np.float32)
+    return melspec.squeeze(0), magnitudes.squeeze(0), energy.squeeze(0)
 
 def pad_wav(waveform, segment_length):
     waveform_length = waveform.shape[-1]
@@ -251,9 +251,9 @@ def batch_process_videos_ddp(input_dir, output_dir):
     
     # Use mp.spawn to launch DDP processes
     mp.spawn(main_worker,
-             args=(world_size, input_dir, output_dir),
-             nprocs=world_size,
-             join=True)
+            args=(world_size, input_dir, output_dir),
+            nprocs=world_size,
+            join=True)
 
     print("\n🎉 所有视频处理完成！")
 
