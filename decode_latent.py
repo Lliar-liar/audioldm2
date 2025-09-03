@@ -9,6 +9,8 @@ import torchaudio
 import subprocess
 import tempfile
 import torch.nn.functional as F
+from scipy import signal
+import matplotlib.pyplot as plt
 
 # MultiResolutionSpectrogramLoss implementation
 class MultiResolutionSpectrogramLoss:
@@ -62,6 +64,56 @@ class MultiResolutionSpectrogramLoss:
             
         return total_loss / len(self.fft_sizes)
 
+def find_alignment(signal1, signal2, max_shift=8000):
+    """
+    使用互相关找到两个信号的最佳对齐
+    max_shift: 最大允许的偏移量（采样点数）
+    """
+    # 归一化信号
+    signal1 = signal1 / (np.max(np.abs(signal1)) + 1e-8)
+    signal2 = signal2 / (np.max(np.abs(signal2)) + 1e-8)
+    
+    # 计算互相关
+    correlation = signal.correlate(signal1, signal2, mode='same')
+    
+    # 找到最大相关的位置
+    center = len(correlation) // 2
+    start = max(0, center - max_shift)
+    end = min(len(correlation), center + max_shift + 1)
+    
+    max_corr_idx = start + np.argmax(correlation[start:end])
+    shift = max_corr_idx - center
+    
+    return shift, correlation[max_corr_idx]
+
+def align_signals(signal1, signal2, shift):
+    """
+    根据shift对齐两个信号
+    """
+    if shift > 0:
+        # signal1 需要向右移动
+        signal1_aligned = signal1[shift:]
+        signal2_aligned = signal2[:len(signal1_aligned)]
+    elif shift < 0:
+        # signal2 需要向右移动
+        signal2_aligned = signal2[-shift:]
+        signal1_aligned = signal1[:len(signal2_aligned)]
+    else:
+        signal1_aligned = signal1
+        signal2_aligned = signal2
+    
+    # 确保长度相同
+    min_len = min(len(signal1_aligned), len(signal2_aligned))
+    return signal1_aligned[:min_len], signal2_aligned[:min_len]
+
+def compute_spectral_convergence(pred_spec, target_spec):
+    """计算频谱收敛度"""
+    return torch.norm(target_spec - pred_spec, p='fro') / torch.norm(target_spec, p='fro')
+
+def compute_magnitude_loss(pred_spec, target_spec):
+    """计算幅度损失"""
+    return F.l1_loss(torch.log(pred_spec + 1e-7), torch.log(target_spec + 1e-7))
+
 # --- 参数解析 ---
 parser = argparse.ArgumentParser(description='从潜在表示还原音频')
 parser.add_argument('--input_latent_path', type=str, required=True,
@@ -71,6 +123,10 @@ parser.add_argument('--output_dir', type=str, default='/blob/avtok/',
 parser.add_argument('--device', type=str, default='auto',
                     choices=['cuda', 'cpu', 'auto'],
                     help='运行设备 (默认: auto)')
+parser.add_argument('--align', action='store_true', default=True,
+                    help='自动对齐音频 (默认: True)')
+parser.add_argument('--plot', action='store_true',
+                    help='绘制波形对比图')
 args = parser.parse_args()
 
 origin_video_base_dir = "/blob/vggsound_cropped/"
@@ -202,39 +258,91 @@ if os.path.exists(original_audio_path):
 if waveform_original is not None:
     print("\n--- 计算损失指标 ---")
     
-    # 确保两个音频长度相同
-    min_length = min(len(waveform), len(waveform_original))
-    waveform_recon_aligned = waveform[:min_length]
-    waveform_original_aligned = waveform_original[:min_length]
+    # 归一化音频以便公平比较
+    waveform_norm = waveform / (np.max(np.abs(waveform)) + 1e-8)
+    waveform_original_norm = waveform_original / (np.max(np.abs(waveform_original)) + 1e-8)
+    
+    # 对齐音频
+    if args.align:
+        print("\n自动对齐音频...")
+        shift, max_corr = find_alignment(waveform_norm, waveform_original_norm)
+        print(f"检测到偏移: {shift} 样本点 (约 {shift/16000*1000:.2f} ms)")
+        print(f"最大相关系数: {max_corr:.4f}")
+        
+        waveform_aligned, waveform_original_aligned = align_signals(
+            waveform_norm, waveform_original_norm, shift
+        )
+    else:
+        # 不对齐，直接截取相同长度
+        min_length = min(len(waveform_norm), len(waveform_original_norm))
+        waveform_aligned = waveform_norm[:min_length]
+        waveform_original_aligned = waveform_original_norm[:min_length]
+    
+    print("\n=== 时域指标 ===")
     
     # 1. 计算 L1 Loss (Waveform)
-    l1_loss = np.mean(np.abs(waveform_recon_aligned - waveform_original_aligned))
+    l1_loss = np.mean(np.abs(waveform_aligned - waveform_original_aligned))
     print(f"Waveform L1 Loss: {l1_loss:.6f}")
     
-    # 2. 计算 L2 Loss (Waveform) - 额外信息
-    l2_loss = np.mean((waveform_recon_aligned - waveform_original_aligned) ** 2)
+    # 2. 计算 L2 Loss (Waveform)
+    l2_loss = np.mean((waveform_aligned - waveform_original_aligned) ** 2)
     print(f"Waveform L2 Loss (MSE): {l2_loss:.6f}")
     
-    # 3. 计算 Multi-Resolution Spectrogram Loss
-    print("\n计算 Multi-Resolution Spectrogram Loss...")
-    spec_loss_calculator = MultiResolutionSpectrogramLoss()
-    
-    # 将numpy数组转换为tensor
-    waveform_recon_tensor = torch.from_numpy(waveform_recon_aligned).float()
-    waveform_original_tensor = torch.from_numpy(waveform_original_aligned).float()
-    
-    spec_loss = spec_loss_calculator.compute_loss(waveform_recon_tensor, waveform_original_tensor)
-    print(f"Multi-Resolution Spectrogram Loss: {spec_loss.item():.6f}")
-    
-    # 4. 计算信噪比 (SNR)
+    # 3. 计算信噪比 (SNR)
     signal_power = np.mean(waveform_original_aligned ** 2)
-    noise_power = np.mean((waveform_recon_aligned - waveform_original_aligned) ** 2)
+    noise_power = np.mean((waveform_aligned - waveform_original_aligned) ** 2)
     snr = 10 * np.log10(signal_power / (noise_power + 1e-10))
     print(f"Signal-to-Noise Ratio (SNR): {snr:.2f} dB")
     
-    # 5. 计算相关系数
-    correlation = np.corrcoef(waveform_recon_aligned, waveform_original_aligned)[0, 1]
+    # 4. 计算相关系数
+    correlation = np.corrcoef(waveform_aligned, waveform_original_aligned)[0, 1]
     print(f"Correlation Coefficient: {correlation:.4f}")
+    
+    print("\n=== 频域指标 ===")
+    
+    # 5. 计算 Multi-Resolution Spectrogram Loss
+    spec_loss_calculator = MultiResolutionSpectrogramLoss()
+    
+    # 将numpy数组转换为tensor
+    waveform_tensor = torch.from_numpy(waveform_aligned).float()
+    waveform_original_tensor = torch.from_numpy(waveform_original_aligned).float()
+    
+    spec_loss = spec_loss_calculator.compute_loss(waveform_tensor, waveform_original_tensor)
+    print(f"Multi-Resolution Spectrogram Loss: {spec_loss.item():.6f}")
+    
+    # 6. 计算频谱收敛度和幅度损失
+    stft_transform = torch.stft(
+        waveform_tensor.unsqueeze(0), 
+        n_fft=1024, 
+        hop_length=256, 
+        win_length=1024,
+        window=torch.hann_window(1024),
+        return_complex=True
+    )
+    stft_original = torch.stft(
+        waveform_original_tensor.unsqueeze(0), 
+        n_fft=1024, 
+        hop_length=256, 
+        win_length=1024,
+        window=torch.hann_window(1024),
+        return_complex=True
+    )
+    
+    mag_recon = torch.abs(stft_transform)
+    mag_original = torch.abs(stft_original)
+    
+    spectral_convergence = compute_spectral_convergence(mag_recon, mag_original)
+    magnitude_loss = compute_magnitude_loss(mag_recon, mag_original)
+    
+    print(f"Spectral Convergence: {spectral_convergence.item():.6f}")
+    print(f"Log Magnitude Loss: {magnitude_loss.item():.6f}")
+    
+    # 7. 计算PESQ-like指标（简化版）
+    # 比较频谱包络
+    spec_envelope_recon = np.mean(mag_recon.numpy(), axis=-1)
+    spec_envelope_original = np.mean(mag_original.numpy(), axis=-1)
+    envelope_corr = np.corrcoef(spec_envelope_recon.flatten(), spec_envelope_original.flatten())[0, 1]
+    print(f"Spectral Envelope Correlation: {envelope_corr:.4f}")
     
     # 保存损失指标到文件
     metrics_path = os.path.join(output_dir, f"{base_name}_metrics.txt")
@@ -243,16 +351,55 @@ if waveform_original is not None:
         f.write(f"=" * 40 + "\n")
         f.write(f"文件: {base_name}\n")
         f.write(f"原始音频长度: {len(waveform_original_aligned)} samples\n")
-        f.write(f"重建音频长度: {len(waveform_recon_aligned)} samples\n")
-        f.write(f"\n损失指标:\n")
+        f.write(f"重建音频长度: {len(waveform_aligned)} samples\n")
+        if args.align:
+            f.write(f"时间偏移: {shift} samples ({shift/16000*1000:.2f} ms)\n")
+        f.write(f"\n时域指标:\n")
         f.write(f"Waveform L1 Loss: {l1_loss:.6f}\n")
         f.write(f"Waveform L2 Loss (MSE): {l2_loss:.6f}\n")
-        f.write(f"Multi-Resolution Spectrogram Loss: {spec_loss.item():.6f}\n")
-        f.write(f"\n质量指标:\n")
         f.write(f"Signal-to-Noise Ratio (SNR): {snr:.2f} dB\n")
         f.write(f"Correlation Coefficient: {correlation:.4f}\n")
+        f.write(f"\n频域指标:\n")
+        f.write(f"Multi-Resolution Spectrogram Loss: {spec_loss.item():.6f}\n")
+        f.write(f"Spectral Convergence: {spectral_convergence.item():.6f}\n")
+        f.write(f"Log Magnitude Loss: {magnitude_loss.item():.6f}\n")
+        f.write(f"Spectral Envelope Correlation: {envelope_corr:.4f}\n")
     
     print(f"\n指标已保存至: {metrics_path}")
+    
+    # 可视化（可选）
+    if args.plot:
+        fig, axes = plt.subplots(3, 1, figsize=(12, 8))
+        
+        # 显示前1秒的波形
+        display_samples = 16000
+        time_axis = np.arange(display_samples) / 16000
+        
+        axes[0].plot(time_axis, waveform_original_aligned[:display_samples], label='Original', alpha=0.7)
+        axes[0].plot(time_axis, waveform_aligned[:display_samples], label='Reconstructed', alpha=0.7)
+        axes[0].set_xlabel('Time (s)')
+        axes[0].set_ylabel('Amplitude')
+        axes[0].set_title('Waveform Comparison (First 1 second)')
+        axes[0].legend()
+        axes[0].grid(True)
+        
+        # 频谱图对比
+        axes[1].imshow(np.log(mag_original[0].numpy() + 1e-7), aspect='auto', origin='lower')
+        axes[1].set_title('Original Spectrogram')
+        axes[1].set_xlabel('Time Frame')
+        axes[1].set_ylabel('Frequency Bin')
+        
+        axes[2].imshow(np.log(mag_recon[0].numpy() + 1e-7), aspect='auto', origin='lower')
+        axes[2].set_title('Reconstructed Spectrogram')
+        axes[2].set_xlabel('Time Frame')
+        axes[2].set_ylabel('Frequency Bin')
+        
+        plt.tight_layout()
+        plot_path = os.path.join(output_dir, f"{base_name}_comparison.png")
+        plt.savefig(plot_path)
+        print(f"对比图已保存至: {plot_path}")
+        plt.close()
+        
 else:
     print("\n警告：无法计算损失指标，因为原始音频不可用。")
 
