@@ -69,8 +69,8 @@ def read_wav_file(filename, segment_length):
     waveform = waveform[None, ...]
     waveform = pad_wav(waveform, segment_length)
 
-    waveform = waveform / np.max(np.abs(waveform))
-    waveform = 0.5 * waveform
+    # waveform = waveform / np.max(np.abs(waveform))
+    # waveform = 0.5 * waveform
 
     return waveform
 def wav_to_fbank(filename, target_length=1024, fn_STFT=None):
