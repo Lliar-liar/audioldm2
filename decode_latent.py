@@ -129,6 +129,7 @@ with torch.no_grad():
     waveform = pipe.mel_spectrogram_to_waveform(decoded_mel)
     waveform = waveform.squeeze().detach().cpu().numpy().astype(np.float32)
 print(waveform.shape)
+waveform=waveform[:48000]
 # 保存重建音频
 scipy.io.wavfile.write(reconstructed_audio_path, rate=16000, data=waveform)
 
