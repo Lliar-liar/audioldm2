@@ -88,29 +88,8 @@ with torch.no_grad():
     # --- 步骤 4a: 使用 VAE 解码器 ---
     print("步骤 1/2: 使用 VAE 解码器将潜在表示转为梅尔频谱图...")
     decoded_mel = vae.decode(latent_tensor).sample
-    print(f"VAE 解码后得到的原始梅尔频谱图形状: {decoded_mel.shape}")
-    
-    # --- 步骤 4b: 重塑梅尔频谱图以适配声码器 (修正部分) ---
-    #
-    # *** 关键修正点 ***
-    # 声码器期望输入为 [Batch, Channels, Length] (3D)
-    # 而 VAE 输出可能是 [Batch, 1, 1, Length, Channels] (5D)
-    # 我们需要移除多余的维度并调整顺序
-    #
-    # 1. 移除所有大小为 1 的维度
-    mel_squeezed = decoded_mel.squeeze()
-    
-    # 2. 如果 squeeze 后是 2D [Length, Channels]，增加 Batch 维度
-    if mel_squeezed.dim() == 2:
-        mel_squeezed = mel_squeezed.unsqueeze(0)
-        
-    
-    print(f"重塑后送入声码器的梅尔频谱图形状: {mel_reshaped.shape}")
 
-    # --- 步骤 4c: 使用声码器生成波形 ---
-    print("步骤 2/2: 使用声码器将梅尔频谱图合成为音频波形...")
-    # 确保调用时没有 return_dict 参数
-    waveform = pipe.mel_spectrogram_to_waveform(mel_squeezed)
+    waveform = pipe.mel_spectrogram_to_waveform(decoded_mel)
     waveform =waveform.squeeze().detach().cpu().numpy().astype(np.float32)
 
 scipy.io.wavfile.write(output_audio_path, rate=SAMPLING_RATE, data=waveform)
