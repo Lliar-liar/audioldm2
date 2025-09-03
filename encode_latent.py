@@ -1,48 +1,43 @@
+import os
 import torch
 import torch.multiprocessing as mp
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.distributed import DistributedSampler
+
 from diffusers import AudioLDM2Pipeline
 import torchaudio
-import os
 import numpy as np
 from tqdm import tqdm
 import traceback
+
 from audioldm2.utils import default_audioldm_config
 from audioldm2.utilities.audio.stft import TacotronSTFT
 
-# =====================================================================================
-#  可调优的性能参数
-# =====================================================================================
-# BATCH_SIZE: 一次性送入GPU处理的文件数量。根据你的GPU显存调整。
-#             对于3秒音频，32或64是比较合理的值。显存越大，可以设置得越高。
-BATCH_SIZE = 32
-
-# NUM_WORKERS: 在后台加载和预处理数据的子进程数量。
-#              建议设置为你服务器CPU核心数的一半左右，例如，如果你有16核，可以设为8。
-#              设置为0表示只使用主进程加载数据（会变慢）。
-NUM_WORKERS = 32
-# =====================================================================================
-
-
-# =====================================================================================
-#  1. 音频预处理的辅助函数 (基本保持不变，但增强了健壮性)
-# =====================================================================================
+# ==============================================================================
+# 1. HELPER FUNCTIONS (Audio Preprocessing)
+# These are mostly unchanged but are required for the script to be self-contained.
+# ==============================================================================
 
 def get_mel_from_wav(audio, _stft):
     audio = torch.clip(torch.FloatTensor(audio).unsqueeze(0), -1, 1)
     audio = torch.autograd.Variable(audio, requires_grad=False)
-    melspec, magnitudes, phases, energy = _stft.mel_spectrogram(audio)
+    melspec, _, _, _ = _stft.mel_spectrogram(audio)
     melspec = torch.squeeze(melspec, 0).numpy().astype(np.float32)
     return melspec
 
 def pad_wav(waveform, segment_length):
     waveform_length = waveform.shape[-1]
-    if waveform_length > segment_length:
-        return waveform[:, :segment_length]
-    elif waveform_length < segment_length:
-        temp_wav = np.zeros((1, segment_length))
-        temp_wav[:, :waveform_length] = waveform
-        return temp_wav
+    if waveform_length > 100:
+        if waveform_length > segment_length:
+            return waveform[:, :segment_length]
+        elif waveform_length < segment_length:
+            temp_wav = np.zeros((1, segment_length))
+            temp_wav[:, :waveform_length] = waveform
+            return temp_wav
+    else: # Waveform is too short or silent
+        return np.zeros((1, segment_length))
     return waveform
 
 def _pad_spec(fbank, target_length=1024):
@@ -56,50 +51,46 @@ def _pad_spec(fbank, target_length=1024):
     return fbank
 
 def normalize_wav(waveform):
-    if np.max(np.abs(waveform)) < 1e-6:
-        return waveform
-    waveform = waveform - np.mean(waveform)
-    waveform = waveform / (np.max(np.abs(waveform)) + 1e-8)
-    return waveform * 0.5
+    if np.max(np.abs(waveform)) > 1e-6:
+        waveform = waveform - np.mean(waveform)
+        waveform = waveform / (np.max(np.abs(waveform)) + 1e-8)
+        return waveform * 0.5
+    return waveform # Return zeros if silent
 
 def read_wav_file(filename, segment_length):
     try:
-        waveform, sr = torchaudio.load(filename, format="mp4", backend="ffmpeg")
-        if waveform.numel() == 0: # 检查是否为空音频
-            raise ValueError("Loaded waveform is empty.")
+        waveform, sr = torchaudio.load(filename, format="mp4")
         if waveform.shape[0] > 1:
             waveform = torch.mean(waveform, dim=0, keepdim=True)
         waveform = torchaudio.functional.resample(waveform, orig_freq=sr, new_freq=16000)
         waveform = waveform.numpy()
         waveform = normalize_wav(waveform)
         waveform = pad_wav(waveform, segment_length)
-    except Exception as e:
-        # tqdm.write(f"Warning: Failed to load {os.path.basename(filename)}. Error: {e}. Returning silence.")
+    except Exception:
+        # If any error occurs during loading, return a silent waveform
         waveform = np.zeros((1, segment_length))
     return waveform
 
 def wav_to_fbank(filename, target_length, fn_STFT):
-    hop_size = 160  # From default config
+    hop_size = fn_STFT.hop_length
     waveform = read_wav_file(filename, target_length * hop_size)
-    waveform = waveform[0, ...]
+    waveform = torch.FloatTensor(waveform[0, ...])
     fbank = get_mel_from_wav(waveform, fn_STFT)
     fbank = torch.FloatTensor(fbank.T)
     fbank = _pad_spec(fbank, target_length)
     return fbank
 
-# =====================================================================================
-#  2. 优化的核心：自定义 Dataset
-# =====================================================================================
+# ==============================================================================
+# 2. PYTORCH DATASET
+# This class efficiently loads and preprocesses one audio file at a time.
+# The DataLoader will use this in multiple worker processes in the background.
+# ==============================================================================
 
 class VideoAudioDataset(Dataset):
-    """
-    这个类负责高效地加载和预处理单个音频文件。
-    DataLoader将使用这个类，并利用多进程（num_workers）来并行执行这里的操作。
-    """
-    def __init__(self, file_list, input_dir, duration=3):
+    def __init__(self, file_paths, input_dir, target_length_sec=3):
         self.input_dir = input_dir
-        self.file_list = file_list
-        self.target_length = int(duration * 102.4)
+        self.file_paths = file_paths
+        self.target_length = int(target_length_sec * 102.4)
 
         config = default_audioldm_config()
         self.fn_STFT = TacotronSTFT(
@@ -113,175 +104,166 @@ class VideoAudioDataset(Dataset):
         )
 
     def __len__(self):
-        return len(self.file_list)
+        return len(self.file_paths)
 
     def __getitem__(self, idx):
-        filename = self.file_list[idx]
-        video_path = os.path.join(self.input_dir, filename)
+        filepath = self.file_paths[idx]
+        full_path = os.path.join(self.input_dir, filepath)
         
-        try:
-            mel = wav_to_fbank(video_path, self.target_length, self.fn_STFT)
-        except Exception:
-            # 如果某个文件处理失败，返回一个全零的张量，以保证批次处理不中断
-            mel = torch.zeros((self.target_length, 80)) # 80 is n_mel_channels
+        # The output filename is derived from the input
+        output_filename = f"{os.path.splitext(filepath)[0]}.npy"
         
-        return mel, video_path
+        mel = wav_to_fbank(
+            full_path, target_length=self.target_length, fn_STFT=self.fn_STFT
+        )
+        return mel, output_filename
 
-# =====================================================================================
-#  3. 模型加载与优化的工作进程函数
-# =====================================================================================
+# ==============================================================================
+# 3. DDP SETUP AND MAIN WORKER FUNCTION
+# This is the core logic that will be run on each GPU.
+# ==============================================================================
 
-def setup_audioldm2_vae(gpu_id, repo_id="cvssp/audioldm2", torch_dtype=torch.float16):
-    device = f"cuda:{gpu_id}"
-    print(f"[GPU-{gpu_id}]: 正在加载 AudioLDM 2 VAE 到 {device}...")
-    pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch_dtype, resume_download=True)
-    pipe = pipe.to(device)
-    print(f"[GPU-{gpu_id}]: 模型已成功加载。")
-    return pipe.vae, device
+def setup(rank, world_size):
+    """Initializes the distributed process group."""
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
-def process_files_on_gpu_optimized(gpu_id, file_chunk, input_dir, output_dir):
+def cleanup():
+    """Cleans up the distributed process group."""
+    dist.destroy_process_group()
+
+def run_worker(rank, world_size, all_files, input_dir, output_dir, batch_size):
     """
-    这是由单个GPU进程执行的工作函数。
-    它内部使用DataLoader来创建数据加载流水线。
+    The main function executed by each GPU process.
+    `rank` is the GPU ID (from 0 to world_size-1).
     """
-    try:
-        vae, device = setup_audioldm2_vae(gpu_id)
-    except Exception as e:
-        print(f"[GPU-{gpu_id}]: 模型加载失败: {e}")
-        return len(file_chunk), 0
+    print(f"Starting DDP worker on GPU {rank}.")
+    setup(rank, world_size)
 
-    dataset = VideoAudioDataset(file_chunk, input_dir)
+    # --- Model Loading ---
+    # Each process loads its own copy of the model into its assigned GPU
+    pipe = AudioLDM2Pipeline.from_pretrained("cvssp/audioldm2", torch_dtype=torch.float16)
+    vae = pipe.vae.to(rank)
+    # Wrap the model with DDP
+    vae_ddp = DDP(vae, device_ids=[rank])
+    vae_ddp.eval()
+
+    # --- Data Loading ---
+    dataset = VideoAudioDataset(all_files, input_dir)
+    # The sampler ensures each GPU gets a different slice of the data
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False)
+    # `num_workers` creates background processes for data loading, crucial for performance
     data_loader = DataLoader(
         dataset,
-        batch_size=BATCH_SIZE,
-        num_workers=NUM_WORKERS,
+        batch_size=batch_size,
+        sampler=sampler,
+        num_workers=4, # Adjust based on your CPU cores
         pin_memory=True,
-        shuffle=False
     )
     
-    success_count = 0
-    error_count = 0
-    
-    progress_bar = tqdm(data_loader, desc=f"GPU-{gpu_id} 处理中", position=gpu_id, leave=True)
-    
-    for mel_batch, path_batch in progress_bar:
-        try:
-            final_mel_batch = []
-            final_output_paths = []
+    # --- Processing Loop ---
+    # Only the main process (rank 0) shows the progress bar
+    if rank == 0:
+        progress_bar = tqdm(data_loader, desc="All GPUs Processing")
+    else:
+        progress_bar = data_loader
 
-            # 过滤掉已经存在的文件，避免重复计算
-            for i, video_path in enumerate(path_batch):
-                base_name = os.path.splitext(os.path.basename(video_path))[0]
-                output_path = os.path.join(output_dir, f"{base_name}.npy")
+    with torch.no_grad():
+        for mel_batch, output_filenames in progress_bar:
+            # Check for already processed files
+            valid_indices = []
+            final_output_paths = []
+            for i, fname in enumerate(output_filenames):
+                output_path = os.path.join(output_dir, fname)
                 if not os.path.exists(output_path):
-                    final_mel_batch.append(mel_batch[i])
+                    valid_indices.append(i)
                     final_output_paths.append(output_path)
             
-            if not final_mel_batch:
-                success_count += len(path_batch)
-                continue
+            if not valid_indices:
+                continue # Skip batch if all files already exist
 
-            # 将需要处理的数据合并成一个新的批次
-            mel_to_process = torch.stack(final_mel_batch)
-            mel_to_process = mel_to_process.unsqueeze(1).to(device, dtype=torch.float16)
+            # Filter the batch to only include unprocessed files
+            mel_batch = mel_batch[valid_indices]
             
-            with torch.no_grad():
-                latent_batch = vae.encode(mel_to_process).latent_dist.mode()
+            # Move data to the current GPU
+            mel_batch = mel_batch.unsqueeze(1).to(rank, dtype=torch.float16)
             
-            latent_batch_np = latent_batch.cpu().numpy()
+            # Perform inference. Use `.module` to access the original model's methods
+            latent_dist = vae_ddp.module.encode(mel_batch).latent_dist
+            latent_batch = latent_dist.mode().cpu().numpy()
 
-            for latent_np, output_path in zip(latent_batch_np, final_output_paths):
+            # Save the results
+            for latent_np, output_path in zip(latent_batch, final_output_paths):
                 np.save(output_path, latent_np)
-            
-            success_count += len(path_batch) # 将跳过和已处理的都算作成功
-
-        except Exception as e:
-            tqdm.write(f"[GPU-{gpu_id} 错误]: 批处理失败，跳过此批次。错误: {e}")
-            error_count += len(path_batch)
-
-    return error_count, success_count
-
-# =====================================================================================
-#  4. 主函数和任务分发
-# =====================================================================================
-
-def batch_process_videos_multi_gpu(input_dir, output_dir):
-    if not torch.cuda.is_available():
-        print("错误：未检测到CUDA设备。")
-        return
-
-    num_gpus = torch.cuda.device_count()
-    print(f"检测到 {num_gpus} 块可用的GPU。")
-
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-        print(f"已创建输出目录: {output_dir}")
-
-    all_files = sorted([f for f in os.listdir(input_dir) if f.lower().endswith((".mp4", ".wav", ".flac", ".m4a"))])
-    if not all_files:
-        print(f"在目录 '{input_dir}' 中没有找到支持的音/视频文件。")
-        return
-        
-    print(f"在输入目录中找到 {len(all_files)} 个文件。准备分发任务...")
-
-    file_chunks = np.array_split(all_files, num_gpus)
     
-    tasks = []
-    for gpu_id, chunk in enumerate(file_chunks):
-        if len(chunk) > 0:
-            tasks.append((gpu_id, list(chunk), input_dir, output_dir))
-            print(f"  -> GPU-{gpu_id} 将处理 {len(chunk)} 个文件。")
+    cleanup()
+    if rank == 0:
+        print(f"\nGPU {rank} finished.")
 
-    ctx = mp.get_context('spawn')
-    with ctx.Pool(processes=len(tasks)) as pool:
-        results = pool.starmap(process_files_on_gpu_optimized, tasks)
+# ==============================================================================
+# 4. MAIN EXECUTION BLOCK
+# This sets up the environment and spawns the DDP workers.
+# ==============================================================================
 
-    total_errors = sum([res[0] for res in results])
-    total_success = sum([res[1] for res in results])
-
-    print("\n" + "="*50)
-    print("--- 处理完成，生成报告 ---")
-    print(f"总计成功处理: {total_success} 个文件")
-    print(f"总计处理失败: {total_errors} 个文件")
-    print("="*50 + "\n")
-
-
-if __name__ == '__main__':
-    try:
-        mp.set_start_method('spawn', force=True)
-        print("多进程启动方法已设置为 'spawn'。")
-    except RuntimeError:
-        print("启动方法已经被设置，忽略。")
-
-    # =======================================================================
-    #  在这里配置你的输入输出目录
-    # =======================================================================
+def main():
+    # --- Configuration ---
     video_directory_list = [
-        "vggsound_00_3s", "vggsound_01_3s", "vggsound_02_3s", "vggsound_03_3s", 
-        "vggsound_04_3s", "vggsound_05_3s", "vggsound_06_3s", "vggsound_07_3s", 
-        "vggsound_08_3s", "vggsound_09_3s", "vggsound_10_3s", "vggsound_11_3s", 
-        "vggsound_12_3s", "vggsound_13_3s", "vggsound_14_3s"
+        "vggsound_05_3s", "vggsound_06_3s", "vggsound_07_3s", "vggsound_08_3s",
+        "vggsound_09_3s", "vggsound_10_3s", "vggsound_11_3s", "vggsound_12_3s",
+        "vggsound_13_3s", "vggsound_14_s"
     ]
     input_video_directory_base = "/blob/vggsound_cropped"
     output_latent_directory_base = "/blob/vggsound_cropped_audio_latent"
-    # =======================================================================
+    
+    # --- Tunable Parameters ---
+    # Per-GPU batch size. Total batch size will be (batch_size * num_gpus)
+    # Adjust based on your VRAM. 32 or 64 is a good starting point.
+    batch_size = 64
+    
+    if not torch.cuda.is_available():
+        print("CUDA is not available. This script requires multiple GPUs.")
+        return
+        
+    world_size = torch.cuda.device_count()
+    print(f"Found {world_size} GPUs. Starting DDP processing.")
 
     for video_dir in video_directory_list:
-        input_video_directory = os.path.join(input_video_directory_base, video_dir)
-        output_latent_directory = os.path.join(output_latent_directory_base, video_dir)
+        input_dir = os.path.join(input_video_directory_base, video_dir)
+        output_dir = os.path.join(output_latent_directory_base, video_dir)
 
-        print(f"\n{'='*20} 开始处理目录: {video_dir} {'='*20}")
-        print(f"输入: {input_video_directory}")
-        print(f"输出: {output_latent_directory}")
-
-        if not os.path.isdir(input_video_directory):
-            print(f"警告: 输入目录不存在，跳过: {input_video_directory}")
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            print(f"Created output directory: {output_dir}")
+        
+        all_files = sorted([f for f in os.listdir(input_dir) if f.lower().endswith(".mp4")])
+        if not all_files:
+            print(f"No .mp4 files found in {input_dir}. Skipping.")
             continue
+            
+        print(f"\nProcessing {len(all_files)} files from {input_dir}...")
 
         try:
-            batch_process_videos_multi_gpu(input_video_directory, output_latent_directory)
+            # mp.spawn launches `world_size` processes, each running `run_worker`
+            mp.spawn(
+                run_worker,
+                args=(world_size, all_files, input_dir, output_dir, batch_size),
+                nprocs=world_size,
+                join=True
+            )
+            print(f"Finished processing directory: {video_dir}")
         except Exception as e:
-            print(f"\n处理目录 '{video_dir}' 时发生严重错误: {e}")
+            print(f"\nAn error occurred during processing directory {video_dir}: {e}")
             print(traceback.format_exc())
 
-    print("\n🎉 所有任务处理完成！")
+    print("\n🎉 All video directories processed successfully!")
+
+
+if __name__ == '__main__':
+    # 'spawn' start method is recommended for CUDA
+    # In DDP with mp.spawn, this is handled automatically, but setting it doesn't hurt.
+    try:
+        mp.set_start_method('spawn', force=True)
+    except RuntimeError:
+        pass
+    main()
