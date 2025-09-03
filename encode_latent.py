@@ -52,6 +52,7 @@ def encode_audio_from_video(video_path, vae, feature_extractor, device):
         mel, _, _ = wav_to_fbank(
             temp_audio_path, target_length=int(duration * 102.4), fn_STFT=fn_STFT
         )
+        mel=mel.unsqueeze(0).unsqueeze(0).to(device)
 
         # 3. 使用 VAE 进行编码
         with torch.no_grad():
