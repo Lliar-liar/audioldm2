@@ -10,7 +10,7 @@ import traceback
 from audioldm2.utils import default_audioldm_config
 from audioldm2.utilities.audio.stft import TacotronSTFT
 # from audioldm2.utilities.audio.tools import wav_to_fbank
-
+torchaudio.set_audio_backend("ffmpeg")
 def setup_audioldm2_vae(gpu_id, repo_id="cvssp/audioldm2", torch_dtype=torch.float16):
     """
     加载并设置 AudioLDM 2 VAE 模型到指定的GPU上。
