@@ -121,7 +121,6 @@ def reconstruct_audio_with_vae(
     # ------------------------------------------------
     # 将Torch Tensor转换为Numpy数组以便保存。
     reconstructed_waveform_np = reconstructed_waveform.squeeze().detach().cpu().numpy().astype(np.float32)
-    waveform
     
     # 保存为WAV文件
     print(f"正在保存重建后的音频到: {output_wav}")
@@ -132,7 +131,7 @@ def reconstruct_audio_with_vae(
 if __name__ == '__main__':
     # --- 配置参数 ---
     # 请将 "path/to/your/audio.wav" 替换成你的WAV文件路径
-    INPUT_AUDIO_FILE = "/home/yifanyang/ziweizhou/output/02_09_2025_02_46_32/Musical constellations twinkling in the night sky, forming a cosmic melody..wav" 
+    INPUT_AUDIO_FILE = "/home/yifanyang/ziweizhou/output/DVe4sMZvcN4_000070_part_001_original.wav" 
     
     # 重建后文件的保存路径
     OUTPUT_AUDIO_FILE = "/home/yifanyang/ziweizhou/output/02_09_2025_02_46_32/recon.wav"

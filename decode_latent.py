@@ -8,6 +8,59 @@ import argparse
 import torchaudio
 import subprocess
 import tempfile
+import torch.nn.functional as F
+
+# MultiResolutionSpectrogramLoss implementation
+class MultiResolutionSpectrogramLoss:
+    def __init__(self, fft_sizes=[512, 1024, 2048], hop_sizes=[120, 240, 480], 
+                 win_lengths=[480, 960, 1920], window='hann_window'):
+        self.fft_sizes = fft_sizes
+        self.hop_sizes = hop_sizes
+        self.win_lengths = win_lengths
+        self.window = window
+        
+    def stft(self, x, fft_size, hop_size, win_length):
+        """Compute STFT magnitude"""
+        window = getattr(torch, self.window)(win_length).to(x.device)
+        stft = torch.stft(
+            x, 
+            n_fft=fft_size, 
+            hop_length=hop_size, 
+            win_length=win_length,
+            window=window,
+            return_complex=True
+        )
+        magnitude = torch.abs(stft)
+        return magnitude
+    
+    def compute_loss(self, pred, target):
+        """Compute multi-resolution spectrogram loss"""
+        pred = torch.from_numpy(pred).float() if isinstance(pred, np.ndarray) else pred
+        target = torch.from_numpy(target).float() if isinstance(target, np.ndarray) else target
+        
+        # Ensure same shape
+        if pred.dim() == 1:
+            pred = pred.unsqueeze(0)
+        if target.dim() == 1:
+            target = target.unsqueeze(0)
+            
+        total_loss = 0.0
+        
+        for fft_size, hop_size, win_length in zip(self.fft_sizes, self.hop_sizes, self.win_lengths):
+            pred_spec = self.stft(pred, fft_size, hop_size, win_length)
+            target_spec = self.stft(target, fft_size, hop_size, win_length)
+            
+            # L1 loss on magnitude
+            l1_loss = F.l1_loss(pred_spec, target_spec)
+            
+            # L2 loss on log magnitude
+            pred_log = torch.log(pred_spec + 1e-7)
+            target_log = torch.log(target_spec + 1e-7)
+            l2_loss = F.mse_loss(pred_log, target_log)
+            
+            total_loss += l1_loss + l2_loss
+            
+        return total_loss / len(self.fft_sizes)
 
 # --- 参数解析 ---
 parser = argparse.ArgumentParser(description='从潜在表示还原音频')
@@ -54,6 +107,7 @@ print(f"重建音频将保存至: {reconstructed_audio_path}")
 print(f"原始音频将保存至: {original_audio_path}")
 
 # --- 4. 从原始视频提取音频并重采样 ---
+waveform_original = None
 if os.path.exists(original_video_path):
     print(f"\n正在从视频提取并重采样原始音频...")
     
@@ -80,9 +134,13 @@ if os.path.exists(original_video_path):
             waveform_original, sr = torchaudio.load(temp_audio_path)
             waveform_original = waveform_original.squeeze().numpy()
             
+            # 截取前3秒（48000个样本点）
+            waveform_original = waveform_original[:48000]
+            
             # 保存原始音频（重采样后）
             scipy.io.wavfile.write(original_audio_path, rate=16000, data=waveform_original)
             print(f"原始音频已提取并重采样，保存至: {original_audio_path}")
+            print(f"原始音频形状: {waveform_original.shape}")
         else:
             print(f"警告：无法从视频提取音频。错误信息: {result.stderr}")
     
@@ -128,8 +186,10 @@ with torch.no_grad():
     print("步骤 2/2: 将梅尔频谱图转换为波形...")
     waveform = pipe.mel_spectrogram_to_waveform(decoded_mel)
     waveform = waveform.squeeze().detach().cpu().numpy().astype(np.float32)
-print(waveform.shape)
-waveform=waveform[:48000]
+
+print(f"重建音频形状: {waveform.shape}")
+waveform = waveform[:48000]  # 截取前3秒
+
 # 保存重建音频
 scipy.io.wavfile.write(reconstructed_audio_path, rate=16000, data=waveform)
 
@@ -137,4 +197,63 @@ print("\n--- 操作成功 ---")
 print(f"重建音频已保存至: '{reconstructed_audio_path}'")
 if os.path.exists(original_audio_path):
     print(f"原始音频已保存至: '{original_audio_path}'")
-print(f"所有文件都保存在: '{output_dir}'")
+
+# --- 7. 计算损失指标 ---
+if waveform_original is not None:
+    print("\n--- 计算损失指标 ---")
+    
+    # 确保两个音频长度相同
+    min_length = min(len(waveform), len(waveform_original))
+    waveform_recon_aligned = waveform[:min_length]
+    waveform_original_aligned = waveform_original[:min_length]
+    
+    # 1. 计算 L1 Loss (Waveform)
+    l1_loss = np.mean(np.abs(waveform_recon_aligned - waveform_original_aligned))
+    print(f"Waveform L1 Loss: {l1_loss:.6f}")
+    
+    # 2. 计算 L2 Loss (Waveform) - 额外信息
+    l2_loss = np.mean((waveform_recon_aligned - waveform_original_aligned) ** 2)
+    print(f"Waveform L2 Loss (MSE): {l2_loss:.6f}")
+    
+    # 3. 计算 Multi-Resolution Spectrogram Loss
+    print("\n计算 Multi-Resolution Spectrogram Loss...")
+    spec_loss_calculator = MultiResolutionSpectrogramLoss()
+    
+    # 将numpy数组转换为tensor
+    waveform_recon_tensor = torch.from_numpy(waveform_recon_aligned).float()
+    waveform_original_tensor = torch.from_numpy(waveform_original_aligned).float()
+    
+    spec_loss = spec_loss_calculator.compute_loss(waveform_recon_tensor, waveform_original_tensor)
+    print(f"Multi-Resolution Spectrogram Loss: {spec_loss.item():.6f}")
+    
+    # 4. 计算信噪比 (SNR)
+    signal_power = np.mean(waveform_original_aligned ** 2)
+    noise_power = np.mean((waveform_recon_aligned - waveform_original_aligned) ** 2)
+    snr = 10 * np.log10(signal_power / (noise_power + 1e-10))
+    print(f"Signal-to-Noise Ratio (SNR): {snr:.2f} dB")
+    
+    # 5. 计算相关系数
+    correlation = np.corrcoef(waveform_recon_aligned, waveform_original_aligned)[0, 1]
+    print(f"Correlation Coefficient: {correlation:.4f}")
+    
+    # 保存损失指标到文件
+    metrics_path = os.path.join(output_dir, f"{base_name}_metrics.txt")
+    with open(metrics_path, 'w') as f:
+        f.write(f"音频重建质量评估指标\n")
+        f.write(f"=" * 40 + "\n")
+        f.write(f"文件: {base_name}\n")
+        f.write(f"原始音频长度: {len(waveform_original_aligned)} samples\n")
+        f.write(f"重建音频长度: {len(waveform_recon_aligned)} samples\n")
+        f.write(f"\n损失指标:\n")
+        f.write(f"Waveform L1 Loss: {l1_loss:.6f}\n")
+        f.write(f"Waveform L2 Loss (MSE): {l2_loss:.6f}\n")
+        f.write(f"Multi-Resolution Spectrogram Loss: {spec_loss.item():.6f}\n")
+        f.write(f"\n质量指标:\n")
+        f.write(f"Signal-to-Noise Ratio (SNR): {snr:.2f} dB\n")
+        f.write(f"Correlation Coefficient: {correlation:.4f}\n")
+    
+    print(f"\n指标已保存至: {metrics_path}")
+else:
+    print("\n警告：无法计算损失指标，因为原始音频不可用。")
+
+print(f"\n所有文件都保存在: '{output_dir}'")
