@@ -1,7 +1,7 @@
 import torch
 import torch.multiprocessing as mp
 from diffusers import AudioLDM2Pipeline
-import moviepy.editor as mp_editor # 重命名以避免与 multiprocessing 混淆
+import torchaudio
 import librosa
 import os
 import numpy as np
