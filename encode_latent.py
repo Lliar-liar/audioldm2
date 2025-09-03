@@ -72,7 +72,7 @@ def read_wav_file(filename, segment_length):
     return waveform
 
 def wav_to_fbank(filename, target_length, fn_STFT):
-    hop_size = fn_STFT.hop_length
+    hop_size = fn_STFT.hop_size
     waveform = read_wav_file(filename, target_length * hop_size)
     waveform = torch.FloatTensor(waveform[0, ...])
     fbank = get_mel_from_wav(waveform, fn_STFT)
