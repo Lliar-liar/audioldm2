@@ -51,7 +51,7 @@ with torch.no_grad():
     waveform = pipe.mel_spectrogram_to_waveform(decoded_mel)
     waveform =waveform.squeeze().detach().cpu().numpy().astype(np.float32)
 
-scipy.io.wavfile.write(output_audio_path, rate=SAMPLING_RATE, data=waveform)
+scipy.io.wavfile.write(output_audio_path, rate=16000, data=waveform)
 
 
 
