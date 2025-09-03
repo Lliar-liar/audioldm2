@@ -128,7 +128,7 @@ with torch.no_grad():
     print("步骤 2/2: 将梅尔频谱图转换为波形...")
     waveform = pipe.mel_spectrogram_to_waveform(decoded_mel)
     waveform = waveform.squeeze().detach().cpu().numpy().astype(np.float32)
-
+print(waveform.shape)
 # 保存重建音频
 scipy.io.wavfile.write(reconstructed_audio_path, rate=16000, data=waveform)
 
