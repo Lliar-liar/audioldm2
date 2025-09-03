@@ -4,6 +4,7 @@ from diffusers import AudioLDM2Pipeline
 import numpy as np
 from scipy.io.wavfile import write
 import os
+import scipy
 
 
 # --- 1. 设置文件路径 ---
@@ -36,48 +37,6 @@ vocoder = pipe.vocoder
 print(f"\n正在从 '{input_latent_path}' 加载潜在表示...")
 latent_np = np.load(input_latent_path)
 latent_tensor = torch.from_numpy(latent_np).to(device, dtype=torch.float16)
-
-
-
-
-# print(f"原始 Latent Tensor 形状: {latent_tensor.shape}")
-
-# # 1. 计算截断长度
-# #    我们操作的是第3个维度 (索引为2)，也就是时间维度
-# original_time_len = latent_tensor.shape[2]
-# truncation_len = int(original_time_len * 3 / 10) # 保留的长度
-
-# # 添加一个安全检查，如果截断长度为0，则不进行任何操作
-# if truncation_len > 0:
-#     print(f"将在时间维度 (dim=2) 上保留前 {truncation_len} 个单位，并用这部分进行循环填充。")
-
-#     # 2. 截取 tensor 的前 3/10 部分，这将是我们的重复“模式”
-#     pattern = latent_tensor[:, :, :truncation_len, :]
-#     print(f"用于循环填充的 'pattern' 形状: {pattern.shape}")
-
-#     # 3. 计算需要重复多少次才能填满或超过原始长度
-#     #    这相当于向上取整除法: ceil(original_time_len / truncation_len)
-#     num_repeats = (original_time_len + truncation_len - 1) // truncation_len
-#     print(f"'pattern' 将被重复 {num_repeats} 次。")
-    
-#     # 4. 沿着时间维度 (dim=2) 重复这个 pattern
-#     #    torch.repeat 的参数是每个维度重复的次数
-#     #    我们只想在时间维度上重复，所以其他维度都是1
-#     repeated_latent = pattern.repeat(1, 1, num_repeats, 1)
-#     print(f"重复后的中间张量形状: {repeated_latent.shape}")
-
-#     # 5. 最后，从这个重复后的长张量中，截取出与原始长度完全相同的部分
-#     #    这样可以确保即使重复后超长了，最终尺寸也是正确的
-#     final_latent_tensor = repeated_latent[:, :, :original_time_len, :]
-
-#     # 用这个新张量覆盖原始的 latent_tensor 变量
-#     latent_tensor = final_latent_tensor
-    
-#     print(f"循环填充后的 Latent Tensor 形状: {latent_tensor.shape}")
-
-# else:
-#     print("警告：计算出的截断长度为0，无法进行循环填充。将使用原始 Latent Tensor。")
-
 
 
 
