@@ -173,7 +173,7 @@ vocoder = pipe.vocoder
 # --- 6. 加载 Latent 并解码 ---
 print(f"\n正在从 '{input_latent_path}' 加载潜在表示...")
 latent_np = np.load(input_latent_path)
-latent_tensor = torch.from_numpy(latent_np).to(device, dtype=torch.float16)
+latent_tensor = torch.from_numpy(latent_np).to(device, dtype=torch.float16).unsqueeze(0)
 print(latent_tensor.shape)
 print("开始解码过程...")
 
