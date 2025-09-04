@@ -15,13 +15,34 @@ from audioldm2.utils import default_audioldm_config
 from audioldm2.utilities.audio.stft import TacotronSTFT
 from diffusers import AutoencoderKL
 # ========== 以下音频处理函数保持不变 ==========
+# def get_mel_from_wav(audio, _stft):
+#     audio = torch.clip(torch.FloatTensor(audio).unsqueeze(0), -1, 1)
+#     audio = torch.autograd.Variable(audio, requires_grad=False)
+#     melspec, magnitudes, phases, energy = _stft.mel_spectrogram(audio)
+#     melspec = torch.squeeze(melspec, 0).numpy().astype(np.float32)
+#     magnitudes = torch.squeeze(magnitudes, 0).numpy().astype(np.float32)
+#     energy = torch.squeeze(energy, 0).numpy().astype(np.float32)
+#     return melspec, magnitudes, energy
+
+
 def get_mel_from_wav(audio, _stft):
-    audio = torch.clip(torch.FloatTensor(audio).unsqueeze(0), -1, 1)
+    # audio 已经在正确的设备上了
+    if isinstance(audio, torch.Tensor):
+        if audio.dim() == 1:
+            audio = audio.unsqueeze(0)
+    else:
+        # 如果不是tensor（不应该发生），转换它
+        device = next(_stft.parameters()).device
+        audio = torch.FloatTensor(audio).unsqueeze(0).to(device)
+    
+    audio = torch.clip(audio, -1, 1)
     audio = torch.autograd.Variable(audio, requires_grad=False)
     melspec, magnitudes, phases, energy = _stft.mel_spectrogram(audio)
-    melspec = torch.squeeze(melspec, 0).numpy().astype(np.float32)
-    magnitudes = torch.squeeze(magnitudes, 0).numpy().astype(np.float32)
-    energy = torch.squeeze(energy, 0).numpy().astype(np.float32)
+    
+    # 保持在GPU上，只是去掉batch维度
+    melspec = torch.squeeze(melspec, 0)  # 保持为tensor
+    magnitudes = torch.squeeze(magnitudes, 0)  # 保持为tensor
+    energy = torch.squeeze(energy, 0)  # 保持为tensor
     return melspec, magnitudes, energy
 
 def pad_wav(waveform, segment_length):
@@ -70,30 +91,73 @@ def read_wav_file(filename, segment_length):
         waveform = 0.5 * waveform
     return waveform
 
+# def wav_to_fbank(filename, target_length=1024, fn_STFT=None, device=None):
+#     assert fn_STFT is not None
+#     waveform = read_wav_file(filename, target_length * 160)
+#     waveform = waveform[0, ...]
+#     waveform = torch.FloatTensor(waveform).to(device)
+#     fbank, log_magnitudes_stft, energy = get_mel_from_wav(waveform, fn_STFT)
+#     fbank = torch.FloatTensor(fbank.T)
+#     log_magnitudes_stft = torch.FloatTensor(log_magnitudes_stft.T)
+#     fbank, log_magnitudes_stft = _pad_spec(fbank, target_length), _pad_spec(
+#         log_magnitudes_stft, target_length
+#     )
+#     return fbank, log_magnitudes_stft, waveform
+
+
 def wav_to_fbank(filename, target_length=1024, fn_STFT=None, device=None):
     assert fn_STFT is not None
+    
+    # 读取音频文件（这部分仍在CPU上）
     waveform = read_wav_file(filename, target_length * 160)
     waveform = waveform[0, ...]
+    
     waveform = torch.FloatTensor(waveform).to(device)
+    
     fbank, log_magnitudes_stft, energy = get_mel_from_wav(waveform, fn_STFT)
-    fbank = torch.FloatTensor(fbank.T)
-    log_magnitudes_stft = torch.FloatTensor(log_magnitudes_stft.T)
-    fbank, log_magnitudes_stft = _pad_spec(fbank, target_length), _pad_spec(
-        log_magnitudes_stft, target_length
-    )
+    
+    fbank = fbank.T
+    log_magnitudes_stft = log_magnitudes_stft.T
+    
+    fbank = _pad_spec(fbank, target_length)
+    log_magnitudes_stft = _pad_spec(log_magnitudes_stft, target_length)
+    
     return fbank, log_magnitudes_stft, waveform
+
+# def encode_audio_from_video(video_path, vae, fn_STFT, device):
+#     try:
+#         config=default_audioldm_config()
+#         duration=3
+#         mel, _, _ = wav_to_fbank(
+#             video_path, target_length=int(duration * 102.4), fn_STFT=fn_STFT,device=device
+#         )
+#         mel=mel.unsqueeze(0).unsqueeze(0).to(device).to(torch.float16)
+#         with torch.no_grad():
+#             latent_representation  = vae.encode(mel).latent_dist.mode()
+#         return latent_representation.cpu().numpy(), "SUCCESS"
+#     except Exception as e:
+#         error_message = f"处理文件 '{os.path.basename(video_path)}' 时发生错误: {e}\n{traceback.format_exc()}"
+#         return None, error_message
 
 def encode_audio_from_video(video_path, vae, fn_STFT, device):
     try:
-        config=default_audioldm_config()
-        duration=3
+        config = default_audioldm_config()
+        duration = 3
+        
+        # mel 现在是GPU上的tensor
         mel, _, _ = wav_to_fbank(
-            video_path, target_length=int(duration * 102.4), fn_STFT=fn_STFT,device=device
+            video_path, target_length=int(duration * 102.4), fn_STFT=fn_STFT, device=device
         )
-        mel=mel.unsqueeze(0).unsqueeze(0).to(device).to(torch.float16)
+        
+        # mel已经在device上了，只需要调整维度和dtype
+        mel = mel.unsqueeze(0).unsqueeze(0).to(torch.float16)
+        
         with torch.no_grad():
-            latent_representation  = vae.encode(mel).latent_dist.mode()
+            latent_representation = vae.encode(mel).latent_dist.mode()
+        
+        # 只在最后需要保存时才移到CPU
         return latent_representation.cpu().numpy(), "SUCCESS"
+        
     except Exception as e:
         error_message = f"处理文件 '{os.path.basename(video_path)}' 时发生错误: {e}\n{traceback.format_exc()}"
         return None, error_message
