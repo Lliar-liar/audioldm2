@@ -354,8 +354,8 @@ if __name__ == '__main__':
     BATCH_SIZE = 32  # 从8开始，如果内存允许可以增加到16或32
     # video_directory_list = ["vggsound_00_3s", "vggsound_01_3s", "vggsound_02_3s", "vggsound_03_3s", "vggsound_04_3s",
     # "vggsound_05_3s", "vggsound_06_3s", "vggsound_07_3s", "vggsound_08_3s", "vggsound_09_3s"]
-    # video_directory_list = ["vggsound_10_3s", "vggsound_11_3s", "vggsound_12_3s", "vggsound_13_3s", "vggsound_14_3s"]
-    video_directory_list = ["vggsound_15_3s", "vggsound_16_3s", "vggsound_17_3s", "vggsound_18_3s", "vggsound_19_3s"]
+    video_directory_list = ["vggsound_10_3s", "vggsound_11_3s", "vggsound_12_3s", "vggsound_13_3s", "vggsound_14_3s"]
+    # video_directory_list = ["vggsound_15_3s", "vggsound_16_3s", "vggsound_17_3s", "vggsound_18_3s", "vggsound_19_3s"]
     input_video_directory_base = "/blob/vggsound_cropped"
     output_latent_directory_base = "/blob/vggsound_cropped_audio_latent_fixed"
    
