@@ -73,7 +73,7 @@ def wav_to_fbank(filename, target_length=1024, fn_STFT=None):
     assert fn_STFT is not None
     waveform = read_wav_file(filename, target_length * 160)
     waveform = waveform[0, ...]
-    waveform = torch.FloatTensor(waveform)
+    waveform = torch.FloatTensor(waveform).to(fn_STFT.device)
     fbank, log_magnitudes_stft, energy = get_mel_from_wav(waveform, fn_STFT)
     fbank = torch.FloatTensor(fbank.T)
     log_magnitudes_stft = torch.FloatTensor(log_magnitudes_stft.T)
@@ -167,7 +167,7 @@ def process_batch_ddp(rank, world_size, input_dir, output_dir):
             config["preprocessing"]["mel"]["mel_fmin"],
             config["preprocessing"]["mel"]["mel_fmax"],
         )
-        
+        fn_STFT.to(device)
         error_count = 0
         success_count = 0
         
