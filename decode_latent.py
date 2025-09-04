@@ -174,7 +174,7 @@ vocoder = pipe.vocoder
 print(f"\n正在从 '{input_latent_path}' 加载潜在表示...")
 latent_np = np.load(input_latent_path)
 latent_tensor = torch.from_numpy(latent_np).to(device, dtype=torch.float16)
-
+print(latent_tensor.shape)
 print("开始解码过程...")
 
 # 在不计算梯度的模式下进行推理
