@@ -113,7 +113,7 @@ def wav_to_fbank(filename, target_length=1024, fn_STFT=None, device=None):
     waveform = waveform[0, ...]
     
     waveform = torch.FloatTensor(waveform).to(device)
-    print(device)
+    # print(device)
     
     fbank, log_magnitudes_stft, energy = get_mel_from_wav(waveform, fn_STFT)
     
@@ -239,6 +239,8 @@ def process_batch_ddp(rank, world_size, input_dir, output_dir):
             config["preprocessing"]["mel"]["mel_fmax"],
         )
         fn_STFT.to(device)
+        if hasattr(fn_STFT, 'mel_basis') and isinstance(fn_STFT.mel_basis, torch.Tensor):
+            fn_STFT.mel_basis = fn_STFT.mel_basis.to(device)
         error_count = 0
         success_count = 0
         
