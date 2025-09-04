@@ -4,6 +4,7 @@ import torch.multiprocessing as mp
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from diffusers import AudioLDM2Pipeline
+from diffusers import AutoencoderKL
 import torchaudio
 import librosa
 import os
@@ -69,11 +70,11 @@ def read_wav_file(filename, segment_length):
         waveform = 0.5 * waveform
     return waveform
 
-def wav_to_fbank(filename, target_length=1024, fn_STFT=None):
+def wav_to_fbank(filename, target_length=1024, fn_STFT=None,device):
     assert fn_STFT is not None
     waveform = read_wav_file(filename, target_length * 160)
     waveform = waveform[0, ...]
-    waveform = torch.FloatTensor(waveform).to(fn_STFT.device)
+    waveform = torch.FloatTensor(waveform).to(device)
     fbank, log_magnitudes_stft, energy = get_mel_from_wav(waveform, fn_STFT)
     fbank = torch.FloatTensor(fbank.T)
     log_magnitudes_stft = torch.FloatTensor(log_magnitudes_stft.T)
@@ -87,7 +88,7 @@ def encode_audio_from_video(video_path, vae, fn_STFT, device):
         config=default_audioldm_config()
         duration=3
         mel, _, _ = wav_to_fbank(
-            video_path, target_length=int(duration * 102.4), fn_STFT=fn_STFT
+            video_path, target_length=int(duration * 102.4), fn_STFT=fn_STFT,device
         )
         mel=mel.unsqueeze(0).unsqueeze(0).to(device).to(torch.float16)
         with torch.no_grad():
@@ -133,14 +134,19 @@ def setup_audioldm2_vae_ddp(rank, repo_id="cvssp/audioldm2", torch_dtype=torch.f
     
     if rank == 0:
         print(f"[Rank {rank}]: 正在加载 AudioLDM 2 模型...")
-    
-    pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch_dtype, resume_download=True)
-    pipe = pipe.to(device)
+    vae = AutoencoderKL.from_pretrained(
+        repo_id, subfolder="vae", torch_dtype=dtype, resume_download=True
+    )
+    vae = vae.to(device)
+    vae.eval()
+    for p in vae.parameters():
+    p.requires_grad = False
+
     
     if rank == 0:
         print(f"[Rank {rank}]: 模型已成功加载。")
     
-    return pipe.vae, pipe.feature_extractor, device
+    return vae, None, device
 
 def process_batch_ddp(rank, world_size, input_dir, output_dir):
     """DDP工作函数，处理分配给当前rank的数据"""
