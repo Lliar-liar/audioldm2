@@ -247,14 +247,21 @@ if __name__ == '__main__':
     mp.set_start_method('spawn', force=True)
     
     # 配置
-    video_directory_list = [
-        "vggsound_15_3s", 
-        "vggsound_16_3s", 
-        "vggsound_17_3s", 
-        "vggsound_18_3s", 
-        "vggsound_19_3s"
-    ]
+    # video_directory_list = [
+    #     "vggsound_15_3s", 
+    #     "vggsound_16_3s", 
+    #     "vggsound_17_3s", 
+    #     "vggsound_18_3s", 
+    #     "vggsound_19_3s"
+    # ]
     
+    video_directory_list = [
+        "vggsound_00_3s", 
+        "vggsound_01_3s", 
+        "vggsound_02_3s", 
+        "vggsound_03_3s", 
+        "vggsound_04_3s"
+    ]
     input_video_directory_base = "/blob/vggsound_cropped"
     output_latent_directory_base = "/blob/vggsound_cropped_audio_latent_fixed"
     
