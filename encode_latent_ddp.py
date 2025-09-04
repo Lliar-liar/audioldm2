@@ -12,7 +12,7 @@ from tqdm import tqdm
 import traceback
 from audioldm2.utils import default_audioldm_config
 from audioldm2.utilities.audio.stft import TacotronSTFT
-
+from diffusers import AutoencoderKL
 # ========== 以下音频处理函数保持不变 ==========
 def get_mel_from_wav(audio, _stft):
     audio = torch.clip(torch.FloatTensor(audio).unsqueeze(0), -1, 1)
@@ -154,7 +154,7 @@ def process_batch_ddp(rank, world_size, input_dir, output_dir):
         # 创建数据集和分布式采样器
         dataset = VideoDataset(input_dir, output_dir)
         sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False)
-        dataloader = DataLoader(dataset, batch_size=1, sampler=sampler, num_workers=4)
+        dataloader = DataLoader(dataset, batch_size=1, sampler=sampler, num_workers=64)
         
         # 设置STFT
         config = default_audioldm_config()
