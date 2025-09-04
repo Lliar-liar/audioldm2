@@ -70,7 +70,7 @@ def read_wav_file(filename, segment_length):
         waveform = 0.5 * waveform
     return waveform
 
-def wav_to_fbank(filename, target_length=1024, fn_STFT=None,device):
+def wav_to_fbank(filename, target_length=1024, fn_STFT=None, device=None):
     assert fn_STFT is not None
     waveform = read_wav_file(filename, target_length * 160)
     waveform = waveform[0, ...]
