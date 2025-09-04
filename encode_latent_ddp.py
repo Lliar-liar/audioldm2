@@ -448,6 +448,11 @@ if __name__ == '__main__':
         "vggsound_07_3s", 
         "vggsound_08_3s", 
         "vggsound_09_3s",
+        # "vggsound_10_3s", 
+        # "vggsound_11_3s", 
+        # "vggsound_12_3s", 
+        # "vggsound_13_3s", 
+        # "vggsound_14_3s",
     ]
     
     input_video_directory_base = "/blob/vggsound_cropped"
