@@ -228,7 +228,7 @@ def process_batch_ddp(rank, world_size, input_dir, output_dir,fn_STFT):
         dataloader = DataLoader(dataset, batch_size=1, sampler=sampler, num_workers=1)
         print(f"[Rank {rank}]: dataloader created")
         # 设置STFT
-        config = default_audioldm_config()
+        
         fn_STFT = fn_STFT.to(device)
         # print(device)
 
@@ -299,6 +299,7 @@ def batch_process_videos_ddp(input_dir, output_dir):
         return
     
     print(f"在输入目录中找到 {len(all_files)} 个 .mp4 文件。")
+    config = default_audioldm_config()
     fn_STFT = TacotronSTFT(
         config["preprocessing"]["stft"]["filter_length"],
         config["preprocessing"]["stft"]["hop_length"],
