@@ -237,10 +237,9 @@ def process_batch_ddp(rank, world_size, input_dir, output_dir):
             config["preprocessing"]["audio"]["sampling_rate"],
             config["preprocessing"]["mel"]["mel_fmin"],
             config["preprocessing"]["mel"]["mel_fmax"],
-        )
-        fn_STFT.to(device)
-        if hasattr(fn_STFT, 'mel_basis') and isinstance(fn_STFT.mel_basis, torch.Tensor):
-            fn_STFT.mel_basis = fn_STFT.mel_basis.to(device)
+        ).to(device)
+
+        fn_STFT.mel_basis = fn_STFT.mel_basis.to(device)
         error_count = 0
         success_count = 0
         
