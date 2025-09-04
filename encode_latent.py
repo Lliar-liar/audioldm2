@@ -71,6 +71,7 @@ def read_wav_file(filename, segment_length):
 
     # waveform = waveform / np.max(np.abs(waveform))
     # waveform = 0.5 * waveform
+    max_val = np.max(np.abs(waveform))
     if max_val > 1e-8:  # 只有在有实际信号时才归一化
         waveform = waveform / max_val
         waveform = 0.5 * waveform
