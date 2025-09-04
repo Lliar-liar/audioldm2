@@ -260,8 +260,9 @@ if __name__ == '__main__':
     ]
     input_video_directory_base="/blob/vggsound_cropped"
     output_latent_directory_base = "/blob/vggsound_cropped_audio_latent_fixed"
-    
+   
     for video_dir in video_directory_list:
+        print(video_dir)
         input_video_directory = os.path.join(input_video_directory_base, video_dir)
         output_latent_directory = os.path.join(output_latent_directory_base, video_dir)
         
