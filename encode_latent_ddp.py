@@ -113,6 +113,7 @@ def wav_to_fbank(filename, target_length=1024, fn_STFT=None, device=None):
     waveform = waveform[0, ...]
     
     waveform = torch.FloatTensor(waveform).to(device)
+    print(device)
     
     fbank, log_magnitudes_stft, energy = get_mel_from_wav(waveform, fn_STFT)
     
