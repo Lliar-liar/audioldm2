@@ -238,8 +238,9 @@ def process_batch_ddp(rank, world_size, input_dir, output_dir):
             config["preprocessing"]["mel"]["mel_fmin"],
             config["preprocessing"]["mel"]["mel_fmax"],
         ).to(device)
+        print(device)
 
-        fn_STFT.mel_basis = fn_STFT.mel_basis.to(device)
+        # fn_STFT.mel_basis = fn_STFT.mel_basis.to(device)
         error_count = 0
         success_count = 0
         
