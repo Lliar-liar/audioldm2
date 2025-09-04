@@ -71,6 +71,9 @@ def read_wav_file(filename, segment_length):
 
     # waveform = waveform / np.max(np.abs(waveform))
     # waveform = 0.5 * waveform
+    if max_val > 1e-8:  # 只有在有实际信号时才归一化
+        waveform = waveform / max_val
+        waveform = 0.5 * waveform
 
     return waveform
 def wav_to_fbank(filename, target_length=1024, fn_STFT=None):
