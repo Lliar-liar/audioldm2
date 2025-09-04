@@ -88,7 +88,7 @@ def encode_audio_from_video(video_path, vae, fn_STFT, device):
         config=default_audioldm_config()
         duration=3
         mel, _, _ = wav_to_fbank(
-            video_path, target_length=int(duration * 102.4), fn_STFT=fn_STFT,device
+            video_path, target_length=int(duration * 102.4), fn_STFT=fn_STFT,device=device
         )
         mel=mel.unsqueeze(0).unsqueeze(0).to(device).to(torch.float16)
         with torch.no_grad():
