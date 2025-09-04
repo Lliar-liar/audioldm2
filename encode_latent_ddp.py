@@ -154,7 +154,7 @@ def process_batch_ddp(rank, world_size, input_dir, output_dir):
         # 创建数据集和分布式采样器
         dataset = VideoDataset(input_dir, output_dir)
         sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False)
-        dataloader = DataLoader(dataset, batch_size=16, sampler=sampler, num_workers=8)
+        dataloader = DataLoader(dataset, batch_size=1, sampler=sampler, num_workers=8)
         
         # 设置STFT
         config = default_audioldm_config()
