@@ -3,24 +3,27 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from diffusers import AudioLDM2Pipeline
+from diffusers import AutoencoderKL
 import torchaudio
-import librosa
 import os
 import numpy as np
 from tqdm import tqdm
 import traceback
 from audioldm2.utils import default_audioldm_config
 from audioldm2.utilities.audio.stft import TacotronSTFT
-from diffusers import AutoencoderKL
+
 # ========== 以下音频处理函数保持不变 ==========
 def get_mel_from_wav(audio, _stft):
+    """使用GPU STFT提取mel频谱"""
     audio = torch.clip(torch.FloatTensor(audio).unsqueeze(0), -1, 1)
     audio = torch.autograd.Variable(audio, requires_grad=False)
+    # 将audio移到STFT所在的设备
+    audio = audio.to(_stft.device)
     melspec, magnitudes, phases, energy = _stft.mel_spectrogram(audio)
-    melspec = torch.squeeze(melspec, 0).numpy().astype(np.float32)
-    magnitudes = torch.squeeze(magnitudes, 0).numpy().astype(np.float32)
-    energy = torch.squeeze(energy, 0).numpy().astype(np.float32)
+    # 将结果移回CPU并转换为numpy
+    melspec = torch.squeeze(melspec, 0).cpu().numpy().astype(np.float32)
+    magnitudes = torch.squeeze(magnitudes, 0).cpu().numpy().astype(np.float32)
+    energy = torch.squeeze(energy, 0).cpu().numpy().astype(np.float32)
     return melspec, magnitudes, energy
 
 def pad_wav(waveform, segment_length):
@@ -56,7 +59,7 @@ def normalize_wav(waveform):
     return waveform * 0.5
 
 def read_wav_file(filename, segment_length):
-    waveform, sr = torchaudio.load(filename,format="mp4",backend="ffmpeg")
+    waveform, sr = torchaudio.load(filename, format="mp4", backend="ffmpeg")
     waveform = torchaudio.functional.resample(waveform, orig_freq=sr, new_freq=16000)
     waveform = waveform.numpy()[0, ...]
     waveform = normalize_wav(waveform)
@@ -83,21 +86,22 @@ def wav_to_fbank(filename, target_length=1024, fn_STFT=None):
     return fbank, log_magnitudes_stft, waveform
 
 def encode_audio_from_video(video_path, vae, fn_STFT, device):
+    """使用VAE编码音频"""
     try:
-        config=default_audioldm_config()
-        duration=3
+        config = default_audioldm_config()
+        duration = 3
         mel, _, _ = wav_to_fbank(
             video_path, target_length=int(duration * 102.4), fn_STFT=fn_STFT
         )
-        mel=mel.unsqueeze(0).unsqueeze(0).to(device).to(torch.float16)
+        mel = mel.unsqueeze(0).unsqueeze(0).to(device).to(torch.float16)
         with torch.no_grad():
-            latent_representation  = vae.encode(mel).latent_dist.mode()
+            latent_representation = vae.encode(mel).latent_dist.mode()
         return latent_representation.cpu().numpy(), "SUCCESS"
     except Exception as e:
         error_message = f"处理文件 '{os.path.basename(video_path)}' 时发生错误: {e}\n{traceback.format_exc()}"
         return None, error_message
 
-# ========== 以下为DDP相关新增/修改的代码 ==========
+# ========== 以下为DDP相关的代码 ==========
 
 class VideoDataset(Dataset):
     """简单的数据集类用于加载视频文件路径"""
@@ -127,20 +131,45 @@ def cleanup():
     """清理DDP"""
     dist.destroy_process_group()
 
-def setup_audioldm2_vae_ddp(rank, repo_id="cvssp/audioldm2", torch_dtype=torch.float16):
-    """为DDP加载并设置AudioLDM 2 VAE模型"""
+def load_vae_only(rank, repo_id="cvssp/audioldm2", torch_dtype=torch.float16):
+    """仅加载VAE模型（不加载完整pipeline）"""
     device = torch.device(f"cuda:{rank}")
     
     if rank == 0:
-        print(f"[Rank {rank}]: 正在加载 AudioLDM 2 模型...")
+        print(f"[Rank {rank}]: 正在加载 VAE 模型...")
     
-    pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch_dtype, resume_download=True)
-    pipe = pipe.to(device)
+    # 直接加载VAE组件
+    vae = AutoencoderKL.from_pretrained(
+        repo_id,
+        subfolder="vae",
+        torch_dtype=torch_dtype,
+        resume_download=True
+    )
+    vae = vae.to(device)
+    vae.eval()  # 设置为评估模式
     
     if rank == 0:
-        print(f"[Rank {rank}]: 模型已成功加载。")
+        print(f"[Rank {rank}]: VAE 模型已成功加载。")
     
-    return pipe.vae, pipe.feature_extractor, device
+    return vae, device
+
+def create_gpu_stft(device):
+    """创建GPU上的STFT对象"""
+    config = default_audioldm_config()
+    fn_STFT = TacotronSTFT(
+        config["preprocessing"]["stft"]["filter_length"],
+        config["preprocessing"]["stft"]["hop_length"],
+        config["preprocessing"]["stft"]["win_length"],
+        config["preprocessing"]["mel"]["n_mel_channels"],
+        config["preprocessing"]["audio"]["sampling_rate"],
+        config["preprocessing"]["mel"]["mel_fmin"],
+        config["preprocessing"]["mel"]["mel_fmax"],
+    )
+    # 将STFT移到GPU
+    fn_STFT = fn_STFT.to(device)
+    # 设置设备属性
+    fn_STFT.device = device
+    return fn_STFT
 
 def process_batch_ddp(rank, world_size, input_dir, output_dir):
     """DDP工作函数，处理分配给当前rank的数据"""
@@ -148,24 +177,22 @@ def process_batch_ddp(rank, world_size, input_dir, output_dir):
     setup_ddp(rank, world_size)
     
     try:
-        # 加载模型
-        vae, _, device = setup_audioldm2_vae_ddp(rank)
+        # 仅加载VAE模型
+        vae, device = load_vae_only(rank)
+        
+        # 创建GPU上的STFT
+        fn_STFT = create_gpu_stft(device)
         
         # 创建数据集和分布式采样器
         dataset = VideoDataset(input_dir, output_dir)
         sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False)
-        dataloader = DataLoader(dataset, batch_size=1, sampler=sampler, num_workers=64)
-        
-        # 设置STFT
-        config = default_audioldm_config()
-        fn_STFT = TacotronSTFT(
-            config["preprocessing"]["stft"]["filter_length"],
-            config["preprocessing"]["stft"]["hop_length"],
-            config["preprocessing"]["stft"]["win_length"],
-            config["preprocessing"]["mel"]["n_mel_channels"],
-            config["preprocessing"]["audio"]["sampling_rate"],
-            config["preprocessing"]["mel"]["mel_fmin"],
-            config["preprocessing"]["mel"]["mel_fmax"],
+        dataloader = DataLoader(
+            dataset, 
+            batch_size=1,  # 每次处理一个文件
+            sampler=sampler, 
+            num_workers=4,  # 减少num_workers以避免内存问题
+            pin_memory=True,
+            prefetch_factor=2
         )
         
         error_count = 0
@@ -178,8 +205,9 @@ def process_batch_ddp(rank, world_size, input_dir, output_dir):
             video_path = video_path[0]  # 解包batch
             output_path = output_path[0]
             
-            # 如果文件已存在则跳过
+            # 如果文件已存在则跳过（可选）
             # if os.path.exists(output_path):
+            #     success_count += 1
             #     continue
             
             latent_np, status = encode_audio_from_video(video_path, vae, fn_STFT, device)
@@ -191,6 +219,10 @@ def process_batch_ddp(rank, world_size, input_dir, output_dir):
                 if rank == 0:
                     print(f"[Rank {rank} 错误]: {status}")
                 error_count += 1
+            
+            # 定期清理缓存
+            if (success_count + error_count) % 100 == 0:
+                torch.cuda.empty_cache()
         
         # 收集所有rank的统计信息
         error_tensor = torch.tensor([error_count], device=device)
@@ -207,8 +239,11 @@ def process_batch_ddp(rank, world_size, input_dir, output_dir):
         print(f"[Rank {rank}]: 处理过程中发生错误: {e}")
         traceback.print_exc()
     finally:
+        # 清理资源
         if 'vae' in locals():
             del vae
+        if 'fn_STFT' in locals():
+            del fn_STFT
         torch.cuda.empty_cache()
         cleanup()
 
@@ -252,18 +287,14 @@ if __name__ == '__main__':
     except RuntimeError:
         pass
     
-    # video_directory_list=["vggsound_04_3s"]
-    # video_directory_list = ["vggsound_00_3s","vggsound_01_3s","vggsound_02_3s","vggsound_03_3s","vggsound_04_3s", 
-    # "vggsound_06_3s", "vggsound_07_3s", "vggsound_08_3s", "vggsound_09_3s",]
-    # video_directory_list = ["vggsound_10_3s", "vggsound_11_3s", "vggsound_12_3s", "vggsound_13_3s", "vggsound_14_3s",]
-    video_directory_list =["vggsound_15_3s", "vggsound_16_3s", "vggsound_17_3s", "vggsound_18_3s", "vggsound_19_3s",]
-    #     "vggsound_15_3s", "vggsound_16_3s", "vggsound_17_3s", "vggsound_18_3s", "vggsound_19_3s",
-    # ]
-    input_video_directory_base="/blob/vggsound_cropped"
+    # 配置要处理的视频目录列表
+    # video_directory_list = ["vggsound_15_3s", "vggsound_16_3s", "vggsound_17_3s", "vggsound_18_3s", "vggsound_19_3s"]
+    video_directory_list = ["vggsound_10_3s", "vggsound_11_3s", "vggsound_12_3s", "vggsound_13_3s", "vggsound_14_3s"]
+    input_video_directory_base = "/blob/vggsound_cropped"
     output_latent_directory_base = "/blob/vggsound_cropped_audio_latent_fixed"
    
     for video_dir in video_directory_list:
-        print(video_dir)
+        print(f"\n开始处理目录: {video_dir}")
         input_video_directory = os.path.join(input_video_directory_base, video_dir)
         output_latent_directory = os.path.join(output_latent_directory_base, video_dir)
         
