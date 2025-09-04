@@ -213,7 +213,7 @@ def setup_audioldm2_vae_ddp(rank, repo_id="cvssp/audioldm2", torch_dtype=torch.f
     
     return vae, None, device
 
-def process_batch_ddp(rank, world_size, input_dir, output_dir):
+def process_batch_ddp(rank, world_size, input_dir, output_dir,fn_STFT):
     """DDP工作函数，处理分配给当前rank的数据"""
     # 设置DDP
     setup_ddp(rank, world_size)
@@ -229,15 +229,7 @@ def process_batch_ddp(rank, world_size, input_dir, output_dir):
         print(f"[Rank {rank}]: dataloader created")
         # 设置STFT
         config = default_audioldm_config()
-        fn_STFT = TacotronSTFT(
-            config["preprocessing"]["stft"]["filter_length"],
-            config["preprocessing"]["stft"]["hop_length"],
-            config["preprocessing"]["stft"]["win_length"],
-            config["preprocessing"]["mel"]["n_mel_channels"],
-            config["preprocessing"]["audio"]["sampling_rate"],
-            config["preprocessing"]["mel"]["mel_fmin"],
-            config["preprocessing"]["mel"]["mel_fmax"],
-        ).to(device)
+        fn_STFT = fn_STFT.to(device)
         # print(device)
 
         # fn_STFT.mel_basis = fn_STFT.mel_basis.to(device)
@@ -307,11 +299,20 @@ def batch_process_videos_ddp(input_dir, output_dir):
         return
     
     print(f"在输入目录中找到 {len(all_files)} 个 .mp4 文件。")
+    fn_STFT = TacotronSTFT(
+        config["preprocessing"]["stft"]["filter_length"],
+        config["preprocessing"]["stft"]["hop_length"],
+        config["preprocessing"]["stft"]["win_length"],
+        config["preprocessing"]["mel"]["n_mel_channels"],
+        config["preprocessing"]["audio"]["sampling_rate"],
+        config["preprocessing"]["mel"]["mel_fmin"],
+        config["preprocessing"]["mel"]["mel_fmax"],
+    )
     
     # 使用spawn启动DDP进程
     mp.spawn(
         process_batch_ddp,
-        args=(world_size, input_dir, output_dir),
+        args=(world_size, input_dir, output_dir,fn_STFT),
         nprocs=world_size,
         join=True
     )
