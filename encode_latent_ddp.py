@@ -20,10 +20,11 @@ from diffusers import AutoencoderKL
 def get_mel_from_wav_batch(audio_batch, _stft):
     """处理一批音频"""
     # audio_batch: [batch_size, samples] 或 [batch_size, 1, samples]
-    if audio_batch.dim() == 2:
-        audio_batch = audio_batch.unsqueeze(1)  # [batch_size, 1, samples]
-    elif audio_batch.dim() == 3 and audio_batch.size(1) == 1:
-        audio_batch = audio_batch.squeeze(1)  # 确保是 [batch_size, samples]
+    # if audio_batch.dim() == 2:
+    #     audio_batch = audio_batch.unsqueeze(1)  # [batch_size, 1, samples]
+    # elif audio_batch.dim() == 3 and audio_batch.size(1) == 1:
+    #     audio_batch = audio_batch.squeeze(1)  # 确保是 [batch_size, samples]
+    print(audio_batch.shape)
     
     audio_batch = torch.clip(audio_batch, -1, 1)
     audio_batch = torch.autograd.Variable(audio_batch, requires_grad=False)
