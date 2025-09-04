@@ -140,7 +140,7 @@ def setup_audioldm2_vae_ddp(rank, repo_id="cvssp/audioldm2", torch_dtype=torch.f
     vae = vae.to(device)
     vae.eval()
     for p in vae.parameters():
-    p.requires_grad = False
+        p.requires_grad = False
 
     
     if rank == 0:
