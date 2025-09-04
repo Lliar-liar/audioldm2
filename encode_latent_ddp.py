@@ -135,7 +135,7 @@ def setup_audioldm2_vae_ddp(rank, repo_id="cvssp/audioldm2", torch_dtype=torch.f
     if rank == 0:
         print(f"[Rank {rank}]: 正在加载 AudioLDM 2 模型...")
     vae = AutoencoderKL.from_pretrained(
-        repo_id, subfolder="vae", torch_dtype=dtype, resume_download=True
+        repo_id, subfolder="vae", torch_dtype=torch_dtype, resume_download=True
     )
     vae = vae.to(device)
     vae.eval()
