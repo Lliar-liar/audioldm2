@@ -10,6 +10,33 @@ import subprocess
 import tempfile
 import torch.nn.functional as F
 
+# 对原始音频做正则化（仅用于损失计算）
+def normalize_original_for_loss(original_np: np.ndarray, ref_np: np.ndarray, eps: float = 1e-8) -> np.ndarray:
+    """
+    将原始音频做正则化以用于损失计算：
+    1) 去直流（减均值）
+    2) 与参考（重建音频）做 RMS 匹配
+    """
+    x = original_np.astype(np.float32)
+    r = ref_np.astype(np.float32)
+
+    # 去直流
+    x = x - np.mean(x)
+
+    # 计算 RMS
+    rms_x = np.sqrt(np.mean(x**2) + eps)
+    rms_r = np.sqrt(np.mean(r**2) + eps)
+
+    # 与参考 RMS 匹配
+    if rms_x > 0:
+        scale = rms_r / rms_x
+        x = x * scale
+
+    # 可选：如需限制幅度可解开下一行
+    # x = np.clip(x, -1.0, 1.0)
+    return x
+
+
 # MultiResolutionSpectrogramLoss implementation
 class MultiResolutionSpectrogramLoss:
     def __init__(self, fft_sizes=[512, 1024, 2048], hop_sizes=[160, 320, 640], 
@@ -173,8 +200,8 @@ vocoder = pipe.vocoder
 # --- 6. 加载 Latent 并解码 ---
 print(f"\n正在从 '{input_latent_path}' 加载潜在表示...")
 latent_np = np.load(input_latent_path)
-if latent_np.ndim==4:
-    latent_np=latent_np.squeeze(0)
+if latent_np.ndim == 4:
+    latent_np = latent_np.squeeze(0)
 latent_tensor = torch.from_numpy(latent_np).to(device, dtype=torch.float16).unsqueeze(0)
 print(latent_tensor.shape)
 print("开始解码过程...")
@@ -208,13 +235,23 @@ if waveform_original is not None:
     min_length = min(len(waveform), len(waveform_original))
     waveform_recon_aligned = waveform[:min_length]
     waveform_original_aligned = waveform_original[:min_length]
-    
+
+    # 在计算损失前对原始音频做正则化（去直流 + RMS 匹配到重建音频）
+    waveform_original_norm = normalize_original_for_loss(
+        waveform_original_aligned, waveform_recon_aligned, eps=1e-8
+    )
+    # 打印 RMS 以确认缩放
+    rms_orig_before = np.sqrt(np.mean((waveform_original_aligned.astype(np.float32))**2) + 1e-8)
+    rms_orig_after  = np.sqrt(np.mean((waveform_original_norm.astype(np.float32))**2) + 1e-8)
+    rms_recon       = np.sqrt(np.mean((waveform_recon_aligned.astype(np.float32))**2) + 1e-8)
+    print(f"RMS(original_before)={rms_orig_before:.6f}, RMS(original_after)={rms_orig_after:.6f}, RMS(recon)={rms_recon:.6f}")
+
     # 1. 计算 L1 Loss (Waveform)
-    l1_loss = np.mean(np.abs(waveform_recon_aligned - waveform_original_aligned))
+    l1_loss = np.mean(np.abs(waveform_recon_aligned - waveform_original_norm))
     print(f"Waveform L1 Loss: {l1_loss:.6f}")
     
     # 2. 计算 L2 Loss (Waveform) - 额外信息
-    l2_loss = np.mean((waveform_recon_aligned - waveform_original_aligned) ** 2)
+    l2_loss = np.mean((waveform_recon_aligned - waveform_original_norm) ** 2)
     print(f"Waveform L2 Loss (MSE): {l2_loss:.6f}")
     
     # 3. 计算 Multi-Resolution Spectrogram Loss
@@ -223,19 +260,19 @@ if waveform_original is not None:
     
     # 将numpy数组转换为tensor
     waveform_recon_tensor = torch.from_numpy(waveform_recon_aligned).float()
-    waveform_original_tensor = torch.from_numpy(waveform_original_aligned).float()
+    waveform_original_tensor = torch.from_numpy(waveform_original_norm).float()
     
     spec_loss = spec_loss_calculator.compute_loss(waveform_recon_tensor, waveform_original_tensor)
     print(f"Multi-Resolution Spectrogram Loss: {spec_loss.item():.6f}")
     
-    # 4. 计算信噪比 (SNR)
-    signal_power = np.mean(waveform_original_aligned ** 2)
-    noise_power = np.mean((waveform_recon_aligned - waveform_original_aligned) ** 2)
+    # 4. 计算信噪比 (SNR) —— 使用正则化后的原始音频作为“信号”
+    signal_power = np.mean(waveform_original_norm ** 2)
+    noise_power = np.mean((waveform_recon_aligned - waveform_original_norm) ** 2)
     snr = 10 * np.log10(signal_power / (noise_power + 1e-10))
     print(f"Signal-to-Noise Ratio (SNR): {snr:.2f} dB")
     
     # 5. 计算相关系数
-    correlation = np.corrcoef(waveform_recon_aligned, waveform_original_aligned)[0, 1]
+    correlation = np.corrcoef(waveform_recon_aligned, waveform_original_norm)[0, 1]
     print(f"Correlation Coefficient: {correlation:.4f}")
     
     # 保存损失指标到文件
@@ -244,7 +281,7 @@ if waveform_original is not None:
         f.write(f"音频重建质量评估指标\n")
         f.write(f"=" * 40 + "\n")
         f.write(f"文件: {base_name}\n")
-        f.write(f"原始音频长度: {len(waveform_original_aligned)} samples\n")
+        f.write(f"原始音频长度: {len(waveform_original_norm)} samples\n")
         f.write(f"重建音频长度: {len(waveform_recon_aligned)} samples\n")
         f.write(f"\n损失指标:\n")
         f.write(f"Waveform L1 Loss: {l1_loss:.6f}\n")
