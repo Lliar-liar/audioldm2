@@ -154,9 +154,9 @@ if waveform_original is not None:
     scipy.io.wavfile.write(normalized_original_path, rate=16000, data=waveform_original_normalized)
     print(f"归一化后的原始音频已保存至: {normalized_original_path}")
     # ===================================================================
-    print(len(waveform), len(waveform_original_normalized),200)
+    print(len(waveform), len(waveform_original_normalized))
     # 确保两个音频长度相同
-    min_length = min(len(waveform), len(waveform_original_normalized))
+    min_length = min(len(waveform), len(waveform_original_normalized),20000)
     waveform_recon_aligned = waveform[:min_length]
     # (重要) 使用归一化后的版本进行所有后续比较
     waveform_original_aligned = waveform_original_normalized[:min_length]
