@@ -223,8 +223,8 @@ if waveform_original is not None:
     recon_tensor = torch.from_numpy(waveform_recon_aligned).float().unsqueeze(0).to(device)
     orig_tensor = torch.from_numpy(waveform_original_aligned).float().unsqueeze(0).to(device)
     with torch.no_grad():
-        mel_reconstructed = fn_STFT.mel_spectrogram(recon_tensor)
-        mel_original = fn_STFT.mel_spectrogram(orig_tensor)
+        mel_reconstructed = fn_STFT.mel_spectrogram(recon_tensor)[0]
+        mel_original = fn_STFT.mel_spectrogram(orig_tensor)[0]
     mel_l1_loss = F.l1_loss(mel_reconstructed, mel_original).item()
     mel_mse_loss = F.mse_loss(mel_reconstructed, mel_original).item()
     print(f"Mel Spectrogram L1 Loss (MAE): {mel_l1_loss:.6f}")
