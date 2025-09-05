@@ -19,9 +19,10 @@ def normalize_original_for_loss(original_np: np.ndarray, ref_np: np.ndarray, eps
     """
     x = original_np.astype(np.float32)
     r = ref_np.astype(np.float32)
-
+    print(np.mean(x))
     # 去直流
     x = x - np.mean(x)
+
 
     # # 计算 RMS
     # rms_x = np.sqrt(np.mean(x**2) + eps)
