@@ -12,8 +12,8 @@ import torch.nn.functional as F
 
 # MultiResolutionSpectrogramLoss implementation
 class MultiResolutionSpectrogramLoss:
-    def __init__(self, fft_sizes=[512, 1024, 2048], hop_sizes=[120, 240, 480], 
-                 win_lengths=[480, 960, 1920], window='hann_window'):
+    def __init__(self, fft_sizes=[512, 1024, 2048], hop_sizes=[160, 320, 640], 
+                 win_lengths=[512, 1024, 2048], window='hann_window'):
         self.fft_sizes = fft_sizes
         self.hop_sizes = hop_sizes
         self.win_lengths = win_lengths
