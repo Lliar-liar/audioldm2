@@ -219,18 +219,16 @@ if waveform_original is not None:
     # 步骤 E: (新增) 计算梅尔频谱图损失 (最直接的VAE性能指标)
     print("\n计算梅尔频谱图损失...")
     mel_l1_loss, mel_mse_loss = -1.0, -1.0 # 默认值
-    try:
-        recon_tensor = torch.from_numpy(waveform_recon_aligned).float().unsqueeze(0).to(device)
-        orig_tensor = torch.from_numpy(waveform_original_aligned).float().unsqueeze(0).to(device)
-        with torch.no_grad():
-            mel_reconstructed = fn_STFT.mel_spectrogram(recon_tensor)
-            mel_original = fn_STFT.mel_spectrogram(orig_tensor)
-        mel_l1_loss = F.l1_loss(mel_reconstructed, mel_original).item()
-        mel_mse_loss = F.mse_loss(mel_reconstructed, mel_original).item()
-        print(f"Mel Spectrogram L1 Loss (MAE): {mel_l1_loss:.6f}")
-        print(f"Mel Spectrogram L2 Loss (MSE): {mel_mse_loss:.6f}")
-    except Exception as e:
-        print(f"计算 Mel Spectrogram Loss 失败: {e}")
+  
+    recon_tensor = torch.from_numpy(waveform_recon_aligned).float().unsqueeze(0).to(device)
+    orig_tensor = torch.from_numpy(waveform_original_aligned).float().unsqueeze(0).to(device)
+    with torch.no_grad():
+        mel_reconstructed = fn_STFT.mel_spectrogram(recon_tensor)
+        mel_original = fn_STFT.mel_spectrogram(orig_tensor)
+    mel_l1_loss = F.l1_loss(mel_reconstructed, mel_original).item()
+    mel_mse_loss = F.mse_loss(mel_reconstructed, mel_original).item()
+    print(f"Mel Spectrogram L1 Loss (MAE): {mel_l1_loss:.6f}")
+    print(f"Mel Spectrogram L2 Loss (MSE): {mel_mse_loss:.6f}")
 
     # 步骤 F: 保存所有指标到文件
     metrics_path = os.path.join(output_dir, f"{base_name}_metrics.txt")
