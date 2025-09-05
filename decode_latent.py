@@ -105,7 +105,7 @@ if os.path.exists(original_video_path):
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if result.returncode == 0:
             waveform_original, sr = torchaudio.load(temp_audio_path)
-            waveform_original = waveform_original.squeeze().numpy()[:48000]
+            waveform_original = waveform_original.squeeze().numpy()
             scipy.io.wavfile.write(original_audio_path, rate=16000, data=waveform_original)
             print(f"原始音频已提取并重采样，保存至: {original_audio_path}")
         else:
@@ -133,7 +133,7 @@ with torch.no_grad():
     decoded_mel = pipe.vae.decode(latent_tensor).sample
     waveform = pipe.mel_spectrogram_to_waveform(decoded_mel).squeeze().cpu().numpy().astype(np.float32)
 
-waveform = waveform[:48000]
+
 scipy.io.wavfile.write(reconstructed_audio_path, rate=16000, data=waveform)
 print(f"重建音频已保存至: '{reconstructed_audio_path}'")
 
