@@ -438,11 +438,11 @@ if __name__ == '__main__':
     #     "vggsound_19_3s"
     # ]
     video_directory_list = [
-        # "vggsound_00_3s", 
-        # "vggsound_01_3s", 
-        # "vggsound_02_3s", 
-        # "vggsound_03_3s", 
-        # "vggsound_04_3s",
+        "vggsound_00_3s", 
+        "vggsound_01_3s", 
+        "vggsound_02_3s", 
+        "vggsound_03_3s", 
+        "vggsound_04_3s",
         # "vggsound_05_3s", 
         # "vggsound_06_3s", 
         # "vggsound_07_3s", 
@@ -453,11 +453,11 @@ if __name__ == '__main__':
         # "vggsound_12_3s", 
         # "vggsound_13_3s", 
         # "vggsound_14_3s",
-        "vggsound_15_3s", 
-        "vggsound_16_3s", 
-        "vggsound_17_3s", 
-        "vggsound_18_3s", 
-        "vggsound_19_3s",
+        # "vggsound_15_3s", 
+        # "vggsound_16_3s", 
+        # "vggsound_17_3s", 
+        # "vggsound_18_3s", 
+        # "vggsound_19_3s",
     ]
     
     input_video_directory_base = "/blob/vggsound_cropped"
