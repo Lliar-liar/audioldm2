@@ -23,14 +23,14 @@ def normalize_original_for_loss(original_np: np.ndarray, ref_np: np.ndarray, eps
     # 去直流
     x = x - np.mean(x)
 
-    # 计算 RMS
-    rms_x = np.sqrt(np.mean(x**2) + eps)
-    rms_r = np.sqrt(np.mean(r**2) + eps)
+    # # 计算 RMS
+    # rms_x = np.sqrt(np.mean(x**2) + eps)
+    # rms_r = np.sqrt(np.mean(r**2) + eps)
 
-    # 与参考 RMS 匹配
-    if rms_x > 0:
-        scale = rms_r / rms_x
-        x = x * scale
+    # # 与参考 RMS 匹配
+    # if rms_x > 0:
+    #     scale = rms_r / rms_x
+    #     x = x * scale
 
     # 可选：如需限制幅度可解开下一行
     # x = np.clip(x, -1.0, 1.0)
