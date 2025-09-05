@@ -19,11 +19,10 @@ def normalize_wav(waveform):
     移除直流分量，然后将波形归一化到 [-0.5, 0.5] 的范围内。
     这很可能是原始编码器使用的预处理步骤。
     """
-    # waveform = waveform - np.mean(waveform)
-    # # 加上一个极小值以防止除以零
-    # waveform = waveform / (np.max(np.abs(waveform)) + 1e-8)
-    # return waveform * 0.5
-    return waveform 
+    waveform = waveform - np.mean(waveform)
+    # 加上一个极小值以防止除以零
+    waveform = waveform / (np.max(np.abs(waveform)) + 1e-8)
+    return waveform * 0.5
 
 # ===================================================================
 #               多分辨率声谱图损失
@@ -147,7 +146,7 @@ if waveform_original is not None:
     # ===================================================================
     print("\n正在对原始音频应用自定义峰值归一化 (peak=0.5)...")
     waveform_original_normalized = normalize_wav(waveform_original)
-    waveform=normalize_wav(waveform)
+
 
     
     # (可选) 保存归一化后的原始音频，用于听感对比
