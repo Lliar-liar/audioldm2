@@ -146,13 +146,15 @@ if waveform_original is not None:
     # ===================================================================
     print("\n正在对原始音频应用自定义峰值归一化 (peak=0.5)...")
     waveform_original_normalized = normalize_wav(waveform_original)
+    waveform=normalize_wav(waveform)
+
     
     # (可选) 保存归一化后的原始音频，用于听感对比
     normalized_original_path = os.path.join(output_dir, f"{base_name}_original_normalized.wav")
     scipy.io.wavfile.write(normalized_original_path, rate=16000, data=waveform_original_normalized)
     print(f"归一化后的原始音频已保存至: {normalized_original_path}")
     # ===================================================================
-
+    print(len(waveform), len(waveform_original_normalized))
     # 确保两个音频长度相同
     min_length = min(len(waveform), len(waveform_original_normalized))
     waveform_recon_aligned = waveform[:min_length]
