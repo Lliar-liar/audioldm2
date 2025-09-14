@@ -118,6 +118,7 @@ class AudioWaveformDataset(Dataset):
             'audio': audio_waveform, 
             "path": abs_mp4_fp,
         }
+        print(audio_waveform.shape)
 
         # 3. Final check for data integrity
         if not torch.all(torch.isfinite(audio_waveform)):
