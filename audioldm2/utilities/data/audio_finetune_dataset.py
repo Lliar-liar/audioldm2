@@ -115,7 +115,7 @@ class AudioWaveformDataset(Dataset):
         # 2. Prepare the final data dictionary
 
         final_data = {
-            'audio_waveform': audio_waveform, 
+            'audio': audio_waveform, 
             "path": abs_mp4_fp,
         }
 
