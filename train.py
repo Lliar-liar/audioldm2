@@ -100,6 +100,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
             audio = batch
             
         # 前向传播
+        print(audio.shape)
         with torch.no_grad():
             outputs = self.model(audio)
         
