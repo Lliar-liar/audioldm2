@@ -85,8 +85,12 @@ class AudioWaveformDataset(Dataset):
         return len(self.metadata)
 
     def normalize_wav(self, waveform):
-        waveform = waveform - np.mean(waveform)
-        waveform = waveform / (np.max(np.abs(waveform)) + 1e-8)
+        waveform = waveform - torch.mean(waveform)
+        
+        # 2. Peak normalization and scaling
+        # Add a small epsilon to avoid division by zero
+        waveform = waveform / (torch.max(torch.abs(waveform)) + 1e-8)
+        
         return waveform * 0.5
 
     def __getitem__(self, item):
