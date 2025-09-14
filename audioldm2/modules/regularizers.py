@@ -10,7 +10,7 @@ from einops import pack, rearrange, reduce, unpack
 from torch import Tensor, int32
 from torch.cuda.amp import autocast
 
-from .distributions import DiagonalGaussianDistribution
+from audioldm2.modules.distributions import DiagonalGaussianDistribution
 
 
 def exists(v):
