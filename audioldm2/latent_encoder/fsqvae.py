@@ -138,7 +138,8 @@ class AutoencoderFSQ(AutoencoderKL):
         fbank, log_magnitudes_stft, energy = self.get_mel_from_wav(x, self.fn_STFT)
         fbank = fbank.T
         mel=self._pad_spec(fbank, int(1.1*102.4))
-        mel_spectrogram = mel.unsqueeze(0).unsqueeze(0)
+        mel_spectrogram = mel.unsqueeze(0)
+        print(mel_spectrogram.shape)
         posterior_output = super().encode(mel_spectrogram, return_dict=True)
         posterior = posterior_output.latent_dist
 
