@@ -1,0 +1,70 @@
+[1;33m[[0m[1;33mvidtok.data.audio[0m[1;33m][0m[1;33m[[0m[1;33mHyCatAudioWaveformDataset[0m[1;33m][0m Use source media dir: [35m/path/to/audio/[0m[95mfiles[0m
+[1;33m[[0m[1;33mvidtok.data.audio[0m[1;33m][0m[1;33m[[0m[1;33mHyCatAudioWaveformDataset[0m[1;33m][0m Use meta path: [35m/path/to/[0m[95mtrain.csv[0m
+Traceback (most recent call last):
+  File "/home/v-wangrui5/ziweizhou/audioldm2/train.py", line 411, in <module>
+    main()
+  File "/home/v-wangrui5/ziweizhou/audioldm2/train.py", line 398, in main
+    trainer.fit(
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 560, in fit
+    call._call_and_handle_interrupt(
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/call.py", line 49, in _call_and_handle_interrupt
+    return trainer_fn(*args, **kwargs)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 598, in _fit_impl
+    self._run(model, ckpt_path=ckpt_path)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 973, in _run
+    call._call_setup_hook(self)  # allow user to set up LightningModule in accelerator environment
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/call.py", line 108, in _call_setup_hook
+    _call_lightning_datamodule_hook(trainer, "setup", stage=fn)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/call.py", line 199, in _call_lightning_datamodule_hook
+    return fn(*args, **kwargs)
+  File "/home/v-wangrui5/ziweizhou/audioldm2/train.py", line 228, in setup
+    self.train_dataset = AudioWaveformDataset(
+  File "/home/v-wangrui5/ziweizhou/audioldm2/audioldm2/utilities/data/audio_finetune_dataset.py", line 43, in __init__
+    self._load_metadata()
+  File "/home/v-wangrui5/ziweizhou/audioldm2/audioldm2/utilities/data/audio_finetune_dataset.py", line 48, in _load_metadata
+    metadata = pd.read_csv(
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pandas/io/parsers/readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pandas/io/parsers/readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pandas/io/parsers/readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pandas/io/parsers/readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pandas/io/common.py", line 873, in get_handle
+    handle = open(
+FileNotFoundError: [Errno 2] No such file or directory: '/path/to/train.csv'
+Traceback (most recent call last):
+  File "/home/v-wangrui5/ziweizhou/audioldm2/train.py", line 411, in <module>
+    main()
+  File "/home/v-wangrui5/ziweizhou/audioldm2/train.py", line 398, in main
+    trainer.fit(
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 560, in fit
+    call._call_and_handle_interrupt(
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/call.py", line 49, in _call_and_handle_interrupt
+    return trainer_fn(*args, **kwargs)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 598, in _fit_impl
+    self._run(model, ckpt_path=ckpt_path)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 973, in _run
+    call._call_setup_hook(self)  # allow user to set up LightningModule in accelerator environment
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/call.py", line 108, in _call_setup_hook
+    _call_lightning_datamodule_hook(trainer, "setup", stage=fn)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/call.py", line 199, in _call_lightning_datamodule_hook
+    return fn(*args, **kwargs)
+  File "/home/v-wangrui5/ziweizhou/audioldm2/train.py", line 228, in setup
+    self.train_dataset = AudioWaveformDataset(
+  File "/home/v-wangrui5/ziweizhou/audioldm2/audioldm2/utilities/data/audio_finetune_dataset.py", line 43, in __init__
+    self._load_metadata()
+  File "/home/v-wangrui5/ziweizhou/audioldm2/audioldm2/utilities/data/audio_finetune_dataset.py", line 48, in _load_metadata
+    metadata = pd.read_csv(
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pandas/io/parsers/readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pandas/io/parsers/readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pandas/io/parsers/readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pandas/io/parsers/readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pandas/io/common.py", line 873, in get_handle
+    handle = open(
+FileNotFoundError: [Errno 2] No such file or directory: '/path/to/train.csv'

@@ -1,0 +1,111 @@
+_wandb:
+    value:
+        cli_version: 0.21.4
+        e:
+            4kss9qr8yk5mxccravcgm5blgapfxifu:
+                args:
+                    - --train_csv
+                    - /path/to/train.csv
+                    - --val_csv
+                    - /path/to/val.csv
+                    - --batch_size
+                    - "16"
+                    - --num_workers
+                    - "8"
+                    - --learning_rate
+                    - "1e-4"
+                    - --epochs
+                    - "100"
+                    - --output_dir
+                    - ./outputs
+                    - --experiment_name
+                    - audio_vae_fsq_exp1
+                    - --gradient_clip_val
+                    - "1.0"
+                    - --accumulate_grad_batches
+                    - "2"
+                    - --log_every_n_steps
+                    - "50"
+                    - --val_check_interval
+                    - "0.5"
+                    - --use_wandb
+                    - --precision
+                    - "16"
+                codePath: train.py
+                codePathLocal: train.py
+                cpu_count: 24
+                cpu_count_logical: 24
+                cudaVersion: "12.9"
+                disk:
+                    /:
+                        total: "1063956480000"
+                        used: "51960315904"
+                email: 1169523200j@gmail.com
+                executable: /home/v-wangrui5/miniconda3/envs/audioldm/bin/python
+                git:
+                    commit: bd88ff2f418c8711444ea2a90b7f03fc7a1b8937
+                    remote: https://github.com/Lliar-liar/audioldm2.git
+                gpu: NVIDIA A100 80GB PCIe
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A100 80GB PCIe
+                      uuid: GPU-d77c56e6-588c-5843-7529-6ce956fe93e0
+                host: GCRAZGDL1514
+                memory:
+                    total: "232209125376"
+                os: Linux-6.11.0-1018-azure-x86_64-with-glibc2.39
+                program: /home/v-wangrui5/ziweizhou/audioldm2/train.py
+                python: CPython 3.9.23
+                root: ./outputs
+                startedAt: "2025-09-14T15:43:31.238928Z"
+                writerId: 4kss9qr8yk5mxccravcgm5blgapfxifu
+        m:
+            - "1": trainer/global_step
+              "6":
+                - 3
+              "7": []
+            - "2": '*'
+              "5": 1
+              "6":
+                - 1
+              "7": []
+        python_version: 3.9.23
+        t:
+            "1":
+                - 1
+                - 5
+                - 9
+                - 11
+                - 41
+                - 49
+                - 53
+                - 63
+                - 83
+                - 103
+                - 105
+                - 106
+            "2":
+                - 1
+                - 5
+                - 9
+                - 11
+                - 41
+                - 49
+                - 53
+                - 63
+                - 83
+                - 103
+                - 105
+                - 106
+            "3":
+                - 7
+                - 13
+                - 66
+            "4": 3.9.23
+            "5": 0.21.4
+            "6": 4.30.2
+            "12": 0.21.4
+            "13": linux-x86_64

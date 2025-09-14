@@ -1,0 +1,40 @@
+Traceback (most recent call last):
+  File "/home/v-wangrui5/ziweizhou/audioldm2/train.py", line 411, in <module>
+    main()
+  File "/home/v-wangrui5/ziweizhou/audioldm2/train.py", line 398, in main
+    trainer.fit(
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 560, in fit
+    call._call_and_handle_interrupt(
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/call.py", line 49, in _call_and_handle_interrupt
+    return trainer_fn(*args, **kwargs)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 598, in _fit_impl
+    self._run(model, ckpt_path=ckpt_path)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 973, in _run
+    call._call_setup_hook(self)  # allow user to set up LightningModule in accelerator environment
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/call.py", line 108, in _call_setup_hook
+    _call_lightning_datamodule_hook(trainer, "setup", stage=fn)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/call.py", line 199, in _call_lightning_datamodule_hook
+    return fn(*args, **kwargs)
+  File "/home/v-wangrui5/ziweizhou/audioldm2/train.py", line 228, in setup
+    self.train_dataset = AudioWaveformDataset(
+TypeError: __init__() got an unexpected keyword argument 'csv_path'
+Traceback (most recent call last):
+  File "/home/v-wangrui5/ziweizhou/audioldm2/train.py", line 411, in <module>
+    main()
+  File "/home/v-wangrui5/ziweizhou/audioldm2/train.py", line 398, in main
+    trainer.fit(
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 560, in fit
+    call._call_and_handle_interrupt(
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/call.py", line 49, in _call_and_handle_interrupt
+    return trainer_fn(*args, **kwargs)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 598, in _fit_impl
+    self._run(model, ckpt_path=ckpt_path)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 973, in _run
+    call._call_setup_hook(self)  # allow user to set up LightningModule in accelerator environment
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/call.py", line 108, in _call_setup_hook
+    _call_lightning_datamodule_hook(trainer, "setup", stage=fn)
+  File "/home/v-wangrui5/miniconda3/envs/audioldm/lib/python3.9/site-packages/pytorch_lightning/trainer/call.py", line 199, in _call_lightning_datamodule_hook
+    return fn(*args, **kwargs)
+  File "/home/v-wangrui5/ziweizhou/audioldm2/train.py", line 228, in setup
+    self.train_dataset = AudioWaveformDataset(
+TypeError: __init__() got an unexpected keyword argument 'csv_path'

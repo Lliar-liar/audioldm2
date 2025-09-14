@@ -1,0 +1,69 @@
+{
+  "os":  "Linux-6.11.0-1018-azure-x86_64-with-glibc2.39",
+  "python":  "CPython 3.9.23",
+  "startedAt":  "2025-09-14T15:42:12.221996Z",
+  "args":  [
+    "--train_csv",
+    "/path/to/train.csv",
+    "--val_csv",
+    "/path/to/val.csv",
+    "--batch_size",
+    "16",
+    "--num_workers",
+    "8",
+    "--learning_rate",
+    "1e-4",
+    "--epochs",
+    "100",
+    "--output_dir",
+    "./outputs",
+    "--experiment_name",
+    "audio_vae_fsq_exp1",
+    "--gradient_clip_val",
+    "1.0",
+    "--accumulate_grad_batches",
+    "2",
+    "--log_every_n_steps",
+    "50",
+    "--val_check_interval",
+    "0.5",
+    "--use_wandb",
+    "--precision",
+    "16"
+  ],
+  "program":  "/home/v-wangrui5/ziweizhou/audioldm2/train.py",
+  "codePath":  "train.py",
+  "codePathLocal":  "train.py",
+  "git":  {
+    "remote":  "https://github.com/Lliar-liar/audioldm2.git",
+    "commit":  "bd88ff2f418c8711444ea2a90b7f03fc7a1b8937"
+  },
+  "email":  "1169523200j@gmail.com",
+  "root":  "./outputs",
+  "host":  "GCRAZGDL1514",
+  "executable":  "/home/v-wangrui5/miniconda3/envs/audioldm/bin/python",
+  "cpu_count":  24,
+  "cpu_count_logical":  24,
+  "gpu":  "NVIDIA A100 80GB PCIe",
+  "gpu_count":  1,
+  "disk":  {
+    "/":  {
+      "total":  "1063956480000",
+      "used":  "51960209408"
+    }
+  },
+  "memory":  {
+    "total":  "232209125376"
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA A100 80GB PCIe",
+      "memoryTotal":  "85899345920",
+      "cudaCores":  6912,
+      "architecture":  "Ampere",
+      "uuid":  "GPU-d77c56e6-588c-5843-7529-6ce956fe93e0"
+    }
+  ],
+  "cudaVersion":  "12.9",
+  "writerId":  "1g396cl65h2swh7s845xdop14oc5ysmx"
+}
