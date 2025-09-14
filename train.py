@@ -302,6 +302,7 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--resume_from_checkpoint", type=str, default=None, help="Resume from checkpoint")
     parser.add_argument("--precision", type=str, default="32", choices=["16", "32", "bf16"], help="Training precision")
+    parser.add_argument("--target_length", type=int, default=17600)
     
     args = parser.parse_args()
     
@@ -318,6 +319,7 @@ def main():
         'n_mels': args.n_mels,
         'hop_length': args.hop_length,
         'n_fft': args.n_fft,
+        "target_length": args.target_length,
     }
     
     # 初始化数据模块
