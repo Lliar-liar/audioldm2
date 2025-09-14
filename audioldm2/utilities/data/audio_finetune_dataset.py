@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from audioldm2.utilities.data.util import print0
 import random
 import torchaudio 
+import numpy as np
 
 class AudioWaveformDataset(Dataset):
     """
