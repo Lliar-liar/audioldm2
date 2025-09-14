@@ -83,7 +83,7 @@ class AudioWaveformDataset(Dataset):
     def __len__(self):
         return len(self.metadata)
 
-    def normalize_wav(waveform):
+    def normalize_wav(self, waveform):
         waveform = waveform - np.mean(waveform)
         waveform = waveform / (np.max(np.abs(waveform)) + 1e-8)
         return waveform * 0.5
