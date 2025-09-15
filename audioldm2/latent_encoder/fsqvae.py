@@ -110,7 +110,7 @@ class AutoencoderFSQ(AutoencoderKL):
         self.vocoder=SpeechT5HifiGan.from_pretrained(
             "cvssp/audioldm2",
             subfolder="vocoder",
-            torch_dtype=torch.bfloat16
+            torch_dtype=torch.float32
         )
 
     def mel_spectrogram_to_waveform(self, mel_spectrogram):
