@@ -58,8 +58,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
             # 可能还有其他元数据
         else:
             audio = batch
-        print(audio)
-        sys.exit()
+
         # 前向传播
         outputs = self.model(audio)
         print(outputs)
