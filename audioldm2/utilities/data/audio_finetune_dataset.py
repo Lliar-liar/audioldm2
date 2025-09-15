@@ -115,6 +115,8 @@ class AudioWaveformDataset(Dataset):
 
         # 2. Prepare the final data dictionary
         audio_waveform=audio_waveform.squeeze(0)
+        print(audio_waveform)
+        sys.exit()
         final_data = {
             'audio': audio_waveform, 
             "path": abs_mp4_fp,
@@ -159,6 +161,5 @@ class AudioWaveformDataset(Dataset):
             padding = torch.zeros((1, target_len - current_len))
             waveform = torch.cat([waveform, padding], dim=1)
         waveform= self.normalize_wav(waveform)
-        print(waveform)
-        sys.exit()
+
         return waveform
