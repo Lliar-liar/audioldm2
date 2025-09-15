@@ -73,7 +73,8 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
             codes = None
         
         # 计算重建损失
-        recon_loss = self.audio_loss(reconstructed, audio)
+        recon_loss = self.audio_loss(reconstructed, audio, global_step = self.global_step,
+            optimizer_idx = 0)
         
         # 总损失
         total_loss = recon_loss + fsq_loss + kl_loss
@@ -117,7 +118,8 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
             codes = None
         
         # 计算重建损失
-        recon_loss = self.audio_loss(reconstructed, audio)
+        recon_loss = self.audio_loss(reconstructed, audio, global_step = self.global_step,
+            optimizer_idx = 0)
         
         # 总损失
         total_loss = recon_loss + fsq_loss + kl_loss
