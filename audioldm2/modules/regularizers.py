@@ -138,10 +138,9 @@ class FSQRegularizer(AbstractRegularizer):
         self.dim = default(dim, len(_levels) * num_codebooks)
 
         has_projections = self.use_projection and (self.dim != effective_codebook_dim)
-        self.torch_dtype=torch_dtype
         if has_projections:
-            self.project_in = nn.Linear(self.dim, effective_codebook_dim).to(self.torch_dtype)
-            self.project_out = nn.Linear(effective_codebook_dim, self.dim).to(self.torch_dtype)
+            self.project_in = nn.Linear(self.dim, effective_codebook_dim)
+            self.project_out = nn.Linear(effective_codebook_dim, self.dim)
         else:
             # 如果不使用投影，就用 Identity 占位
             # 并且我们断言输入维度必须等于有效的码本维度
