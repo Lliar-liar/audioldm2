@@ -63,7 +63,7 @@ class AutoencoderFSQ(AutoencoderKL):
         sample_size: int = 1024,
         scaling_factor: float = 0.4110932946205139,
         
-        fsq_levels: list = [8, 5, 5, 5],
+        fsq_levels: list = [8, 8, 8, 8, 8],
         fsq_commitment_loss_weight: float = 0.25,
         sampling_rate: int = 16000,
         target_mel_length: int = 1024,
@@ -190,9 +190,11 @@ class AutoencoderFSQ(AutoencoderKL):
         posterior = posterior_output.latent_dist
 
         mean_latent = posterior.mode()
-        print(mean_latent)
-        # print(mean_latent.shape)
+        
+        print(mean_latent.shape)
         z_quantized, fsq_dict = self.quantizer(mean_latent, n_steps=n_steps)
+        print(z_quantized.shape)
+        print(mean_latent)
         print(z_quantized)
         sys.exit()
         if not return_dict:
