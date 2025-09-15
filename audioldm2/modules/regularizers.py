@@ -247,6 +247,7 @@ class FSQRegularizer(AbstractRegularizer):
             z, ps = pack_one(z, "b * d")
 
         # assert z.shape[-1] == self.dim, f"expected dimension of {self.dim} but found dimension of {z.shape[-1]}"
+        print(z,self.project_in)
         z = self.project_in(z)
         z = rearrange(z, "b n (c d) -> b n c d", c=self.num_codebooks)
 
