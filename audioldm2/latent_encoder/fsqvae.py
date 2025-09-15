@@ -16,7 +16,8 @@ from audioldm2.utilities.tools import synth_one_sample
 from typing import Union, Tuple
 
 
-from diffusers import AutoencoderKL,SpeechT5HifiGan
+from diffusers import AutoencoderKL
+from transformers import SpeechT5HifiGan
 from diffusers.models.modeling_outputs import AutoencoderKLOutput
 
 from audioldm2.modules.regularizers import FSQRegularizer
