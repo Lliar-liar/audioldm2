@@ -27,10 +27,11 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         lr_scheduler_type: str = "cosine",
         warmup_steps: int = 1000,
         audio_loss_config: Optional[Dict[str, Any]] = None,
+        aux_loss_weight=30,
     ):
         super().__init__()
         self.save_hyperparameters()
-        
+        self.aux_loss_weight=aux_loss_weight
         # 初始化模型
         self.model = AutoencoderFSQ.from_pretrained(
             model_name,
@@ -65,13 +66,9 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         # 解析输出
         if isinstance(outputs, dict):
             reconstructed = outputs.get('reconstruction', outputs.get('output'))
-            fsq_loss = outputs.get('fsq_loss', 0.0)
-            kl_loss = outputs.get('kl_loss', 0.0)
             codes = outputs.get('codes', None)
         else:
             reconstructed = outputs
-            fsq_loss = 0.0
-            kl_loss = 0.0
             codes = None
         reconstructed=reconstructed.squeeze(0)
         # print(reconstructed.shape)
@@ -88,7 +85,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         
         # 总损失
         
-        total_loss = recon_loss + fsq_loss + kl_loss
+        total_loss = recon_loss + self.aux_loss_weight * fsq_dict["aux_loss"]
         
         # 记录指标
         self.log('train/total_loss', total_loss, prog_bar=True, on_step=True, on_epoch=True)
@@ -122,13 +119,9 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         # 解析输出
         if isinstance(outputs, dict):
             reconstructed = outputs.get('reconstruction', outputs.get('output'))
-            fsq_loss = outputs.get('fsq_loss', 0.0)
-            kl_loss = outputs.get('kl_loss', 0.0)
             codes = outputs.get('codes', None)
         else:
             reconstructed = outputs
-            fsq_loss = 0.0
-            kl_loss = 0.0
             codes = None
         reconstructed=reconstructed.squeeze(0)
         # 计算重建损失
@@ -144,7 +137,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         )
         # print(recon_loss, fsq_loss, kl_loss)
         # 总损失
-        total_loss = recon_loss + fsq_loss + kl_loss
+        total_loss = recon_loss + self.aux_loss_weight * fsq_dict["aux_loss"]
         
         # 记录指标
         self.log('val/total_loss', total_loss, prog_bar=True, on_step=False, on_epoch=True)
