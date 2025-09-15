@@ -284,7 +284,7 @@ class FSQRegularizer(AbstractRegularizer):
             else:
                 entropy_aux_loss = per_sample_entropy = codebook_entropy = commit_loss = self.zero
 
-            codes = codes.type(orig_dtype)
+            # codes = codes.type(orig_dtype)
 
         codes = rearrange(codes, "b n c d -> b n (c d)")
         out = self.project_out(codes)
