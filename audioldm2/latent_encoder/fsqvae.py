@@ -141,7 +141,7 @@ class AutoencoderFSQ(AutoencoderKL):
 
         assert fn_STFT is not None
 
-        fbank_batch, log_magnitudes_stft_batch, energy_batch = get_mel_from_wav_batch(
+        fbank_batch, log_magnitudes_stft_batch, energy_batch = self.get_mel_from_wav_batch(
             batch_waveforms, fn_STFT
         )
         
