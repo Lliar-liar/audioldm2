@@ -164,7 +164,7 @@ class AutoencoderFSQ(AutoencoderKL):
         
         return fbank_batch, log_magnitudes_stft_batch, batch_waveforms, valid_indices
 
-    def encode(self, x: torch.Tensor, return_dict: bool = True, n_steps: int = 0, target_length :float=1.1) -> Union[AutoencoderKLOutput, Tuple]:
+    def encode(self, x: torch.Tensor, return_dict: bool = True, n_steps: int = 0, duration :float=1.1) -> Union[AutoencoderKLOutput, Tuple]:
 
         
         fbank, _, _, _  = self.wav_to_fbank_batch(x, target_length=int(duration * 102.4), fn_STFT=self.fn_STFT)
