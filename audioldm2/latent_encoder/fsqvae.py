@@ -168,7 +168,7 @@ class AutoencoderFSQ(AutoencoderKL):
         
         fbank, _, _, = self.wav_to_fbank_batch(batch_waveforms=x, target_length=int(duration * 102.4), fn_STFT=self.fn_STFT)
  
-        mel_spectrogram = fbank.unsqueeze(0)
+        mel_spectrogram = fbank.unsqueeze(1)
         print(mel_spectrogram.shape)
         posterior_output = super().encode(mel_spectrogram, return_dict=True)
         posterior = posterior_output.latent_dist
