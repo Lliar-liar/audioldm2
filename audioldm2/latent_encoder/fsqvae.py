@@ -109,9 +109,18 @@ class AutoencoderFSQ(AutoencoderKL):
         )
         self.vocoder=SpeechT5HifiGan.from_pretrained(
             "cvssp/audioldm2",
-            subfolder="vocoder"
+            subfolder="vocoder",
+            torch_dtype=torch.bfloat16
         )
         print(self.vocoder)
+    def mel_spectrogram_to_waveform(self, mel_spectrogram):
+        if mel_spectrogram.dim() == 4:
+            mel_spectrogram = mel_spectrogram.squeeze(1)
+
+        waveform = self.vocoder(mel_spectrogram)
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
+        waveform = waveform
+        return waveform
 
     def get_mel_from_wav_batch(self, audio_batch, _stft):
         if audio_batch.dim() == 3:
@@ -219,6 +228,7 @@ class AutoencoderFSQ(AutoencoderKL):
         
         # 2. 解码
         reconstruction = self.decode(z_quantized, return_dict=True).sample
+        reconstruction = self.mel_spectrogram_to_waveform(reconstruction)
         
         if not return_dict:
             return (reconstruction, fsq_dict)
