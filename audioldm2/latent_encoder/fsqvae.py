@@ -108,7 +108,8 @@ class AutoencoderFSQ(AutoencoderKL):
             config_audio["preprocessing"]["mel"]["mel_fmax"],
         )
         self.vocoder=SpeechT5HifiGan.from_pretrained(
-            "cvssp/audioldm2"
+            "cvssp/audioldm2",
+            subfolder="vocoder"
         )
         print(self.vocoder)
 
