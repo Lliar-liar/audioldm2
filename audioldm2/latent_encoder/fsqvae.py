@@ -181,6 +181,7 @@ class AutoencoderFSQ(AutoencoderKL):
  
         mel_spectrogram = fbank.unsqueeze(1)
         # print(mel_spectrogram.shape)
+        print(torch.isfinite(mel_spectrogram))
         posterior_output = super().encode(mel_spectrogram, return_dict=True)
         posterior = posterior_output.latent_dist
 
