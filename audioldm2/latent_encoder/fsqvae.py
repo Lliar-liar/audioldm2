@@ -106,15 +106,18 @@ class AutoencoderFSQ(AutoencoderKL):
             config_audio["preprocessing"]["mel"]["mel_fmax"],
         )
 
-    def get_mel_from_wav(self, audio, _stft):
-        print(audio.shape)
-        audio = torch.clip(audio.unsqueeze(0), -1, 1)
-        audio = torch.clip(audio, -1, 1)
-        audio = torch.autograd.Variable(audio, requires_grad=False)
-        melspec, magnitudes, phases, energy = _stft.mel_spectrogram(audio)
-        melspec = torch.squeeze(melspec, 0)
-        magnitudes = torch.squeeze(magnitudes, 0)
-        energy = torch.squeeze(energy, 0)
+    def get_mel_from_wav_batch(self, audio_batch, _stft):
+        if audio_batch.dim() == 3:
+            audio_batch = audio_batch.squeeze(1)
+        elif audio_batch.dim() == 1:
+            audio_batch = audio_batch.unsqueeze(0)
+        
+        assert audio_batch.dim() == 2, f"Expected 2D tensor, got {audio_batch.dim()}D"
+        
+        audio_batch = torch.clip(audio_batch, -1, 1)
+        audio_batch = torch.autograd.Variable(audio_batch, requires_grad=False)
+        
+        melspec, magnitudes, phases, energy = _stft.mel_spectrogram(audio_batch)
         return melspec, magnitudes, energy
 
     def _pad_spec(self, fbank, target_length=1024):
@@ -132,14 +135,41 @@ class AutoencoderFSQ(AutoencoderKL):
 
         return fbank
         
-    def encode(self, x: torch.Tensor, return_dict: bool = True, n_steps: int = 0) -> Union[AutoencoderKLOutput, Tuple]:
 
+    
+    def wav_to_fbank_batch(self, batch_waveforms, target_length=1024, fn_STFT=None, device=None):
 
-        fbank, log_magnitudes_stft, energy = self.get_mel_from_wav(x, self.fn_STFT)
-        fbank = fbank.T
-        mel=self._pad_spec(fbank, int(1.1*102.4))
-        print(mel.shape)
-        mel_spectrogram = mel.unsqueeze(0)
+        assert fn_STFT is not None
+        if not batch_waveforms:
+            return None, None, None, []
+        fbank_batch, log_magnitudes_stft_batch, energy_batch = get_mel_from_wav_batch(
+            batch_waveforms, fn_STFT
+        )
+        
+        processed_fbanks = []
+        processed_log_mags = []
+        
+        for i in range(fbank_batch.size(0)):
+            fbank = fbank_batch[i].T
+            log_mag = log_magnitudes_stft_batch[i].T
+            
+            fbank = _pad_spec(fbank, target_length)
+            log_mag = _pad_spec(log_mag, target_length)
+            
+            processed_fbanks.append(fbank)
+            processed_log_mags.append(log_mag)
+        
+        fbank_batch = torch.stack(processed_fbanks)
+        log_magnitudes_stft_batch = torch.stack(processed_log_mags)
+        
+        return fbank_batch, log_magnitudes_stft_batch, batch_waveforms, valid_indices
+
+    def encode(self, x: torch.Tensor, return_dict: bool = True, n_steps: int = 0, target_length :float=1.1) -> Union[AutoencoderKLOutput, Tuple]:
+
+        
+        fbank, _, _, _  = self.wav_to_fbank_batch(x, target_length=int(duration * 102.4), self.fn_STFT)
+ 
+        mel_spectrogram = fbank.unsqueeze(0)
         print(mel_spectrogram.shape)
         posterior_output = super().encode(mel_spectrogram, return_dict=True)
         posterior = posterior_output.latent_dist
