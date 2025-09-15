@@ -14,7 +14,7 @@ from audioldm2.utilities.data.audio_finetune_dataset import AudioWaveformDataset
 from audioldm2.modules.audio_loss import AudioReconstructionLoss
 
 import sys
-
+import time
 
 class AudioVAEFSQLightningModule(pl.LightningModule):
     def __init__(
@@ -397,10 +397,11 @@ def main():
     ]
     
     if args.use_wandb:
+        unique_run_name = f"{args.experiment_name}-{int(time.time())}"
         loggers.append(
             WandbLogger(
                 project="audio-vae-fsq",
-                name=args.experiment_name,
+                name=unique_run_name,
                 save_dir=args.output_dir,
             )
         )
