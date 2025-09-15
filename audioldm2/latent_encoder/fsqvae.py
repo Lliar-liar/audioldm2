@@ -84,7 +84,7 @@ class AutoencoderFSQ(AutoencoderKL):
         # assert latent_channels == len(fsq_levels), (
         #     f"'latent_channels' ({latent_channels}) must match the number of FSQ levels ({len(fsq_levels)})."
         # )
-        print(latent_channels)
+        # print(latent_channels)
         self.quantizer = FSQRegularizer(
             levels=fsq_levels,
             dim=latent_channels,
@@ -169,12 +169,12 @@ class AutoencoderFSQ(AutoencoderKL):
         fbank, _, _, = self.wav_to_fbank_batch(batch_waveforms=x, target_length=int(duration * 102.4), fn_STFT=self.fn_STFT)
  
         mel_spectrogram = fbank.unsqueeze(1)
-        print(mel_spectrogram.shape)
+        # print(mel_spectrogram.shape)
         posterior_output = super().encode(mel_spectrogram, return_dict=True)
         posterior = posterior_output.latent_dist
 
         mean_latent = posterior.mode()
-        print(mean_latent.shape)
+        # print(mean_latent.shape)
         z_quantized, fsq_dict = self.quantizer(mean_latent, n_steps=n_steps)
         
         if not return_dict:
