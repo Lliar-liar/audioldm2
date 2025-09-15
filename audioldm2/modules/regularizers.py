@@ -107,7 +107,7 @@ class FSQRegularizer(AbstractRegularizer):
         commitment_loss_weight: float = 0.0,
         diversity_gamma: float = 1.0,
         use_projection: bool = True,
-        torch_dtype=torch.bf16
+        torch_dtype=torch.bfloat16
         
     ):
         super().__init__()
