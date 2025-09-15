@@ -107,7 +107,7 @@ class FSQRegularizer(AbstractRegularizer):
         commitment_loss_weight: float = 0.0,
         diversity_gamma: float = 1.0,
         use_projection: bool = True,
-        torch_dtype=torch.bfloat16
+
         
     ):
         super().__init__()
@@ -247,13 +247,14 @@ class FSQRegularizer(AbstractRegularizer):
             z, ps = pack_one(z, "b * d")
 
         # assert z.shape[-1] == self.dim, f"expected dimension of {self.dim} but found dimension of {z.shape[-1]}"
-        print(z,self.project_in)
+        orig_dtype = z.dtype
+        z = z.float()
+
         z = self.project_in(z)
         z = rearrange(z, "b n (c d) -> b n c d", c=self.num_codebooks)
 
         with torch.autocast("cuda", enabled=False):
-            orig_dtype = z.dtype
-            z = z.float()
+            
             original_input = z
             codes = self.quantize(z)
             indices = self.codes_to_indices(codes)
