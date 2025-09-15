@@ -140,8 +140,7 @@ class AutoencoderFSQ(AutoencoderKL):
     def wav_to_fbank_batch(self, batch_waveforms, target_length=1024, fn_STFT=None, device=None):
 
         assert fn_STFT is not None
-        if not batch_waveforms:
-            return None, None, None, []
+
         fbank_batch, log_magnitudes_stft_batch, energy_batch = get_mel_from_wav_batch(
             batch_waveforms, fn_STFT
         )
@@ -167,7 +166,7 @@ class AutoencoderFSQ(AutoencoderKL):
     def encode(self, x: torch.Tensor, return_dict: bool = True, n_steps: int = 0, duration :float=1.1) -> Union[AutoencoderKLOutput, Tuple]:
 
         
-        fbank, _, _, _  = self.wav_to_fbank_batch(x, target_length=int(duration * 102.4), fn_STFT=self.fn_STFT)
+        fbank, _, _, _  = self.wav_to_fbank_batch(batch_waveforms=x, target_length=int(duration * 102.4), fn_STFT=self.fn_STFT)
  
         mel_spectrogram = fbank.unsqueeze(0)
         print(mel_spectrogram.shape)
