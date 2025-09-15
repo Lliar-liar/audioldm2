@@ -167,7 +167,7 @@ class AutoencoderFSQ(AutoencoderKL):
     def encode(self, x: torch.Tensor, return_dict: bool = True, n_steps: int = 0, target_length :float=1.1) -> Union[AutoencoderKLOutput, Tuple]:
 
         
-        fbank, _, _, _  = self.wav_to_fbank_batch(x, target_length=int(duration * 102.4), self.fn_STFT)
+        fbank, _, _, _  = self.wav_to_fbank_batch(x, target_length=int(duration * 102.4), fn_STFT=self.fn_STFT)
  
         mel_spectrogram = fbank.unsqueeze(0)
         print(mel_spectrogram.shape)
