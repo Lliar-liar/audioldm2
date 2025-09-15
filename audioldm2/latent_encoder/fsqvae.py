@@ -207,6 +207,7 @@ class AutoencoderFSQ(AutoencoderKL):
     def decode(self, z: torch.Tensor, return_dict: bool = True, **kwargs) -> Union[torch.Tensor, Tuple]:
 
         outputs=super().decode(z=z, return_dict=True)
+        
         if not return_dict:
             return (outputs.sample,)
             

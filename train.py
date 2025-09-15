@@ -83,6 +83,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         )
         
         # 总损失
+        print(recon_loss, fsq_loss, kl_loss)
         total_loss = recon_loss + fsq_loss + kl_loss
         
         # 记录指标
