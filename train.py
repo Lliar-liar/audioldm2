@@ -93,7 +93,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         self.log('train/recon_loss', recon_loss, on_step=True, on_epoch=True)
       
         self.log_dict(audio_loss_dict, prog_bar=False, logger=True, on_step=True, on_epoch=True)
-        self.log('train/aux_loss', fsq_dict.aux_loss, on_step=True, on_epoch=True)
+        self.log('train/aux_loss', fsq_dict["aux_loss"], on_step=True, on_epoch=True)
   
         
         # 如果有codes，记录codebook使用率
@@ -149,8 +149,8 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         self.log('val/recon_loss', recon_loss, on_step=False, on_epoch=True)
 
         self.log_dict(audio_loss_dict, prog_bar=False, logger=True, on_step=True, on_epoch=True)
-        self.log('train/aux_loss', fsq_dict.aux_loss, on_step=True, on_epoch=True)
-        print(fsq_dict.aux_loss)
+        self.log('train/aux_loss', fsq_dict["aux_loss"], on_step=True, on_epoch=True)
+
   
         
         # 记录codebook使用率
