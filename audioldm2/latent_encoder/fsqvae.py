@@ -112,7 +112,7 @@ class AutoencoderFSQ(AutoencoderKL):
             subfolder="vocoder",
             torch_dtype=torch.bfloat16
         )
-        print(self.vocoder)
+
     def mel_spectrogram_to_waveform(self, mel_spectrogram):
         if mel_spectrogram.dim() == 4:
             mel_spectrogram = mel_spectrogram.squeeze(1)
@@ -193,9 +193,8 @@ class AutoencoderFSQ(AutoencoderKL):
         
         print(mean_latent.shape)
         z_quantized, fsq_dict = self.quantizer(mean_latent, n_steps=n_steps)
-        print(z_quantized.shape)
         print(mean_latent)
-        print(z_quantized)
+        print(fsq_dict)
         sys.exit()
         if not return_dict:
             # 返回一个元组 (tuple)
