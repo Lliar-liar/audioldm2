@@ -59,6 +59,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
             
         # 前向传播
         outputs = self.model(audio)
+        print(outputs)
         
         # 解析输出
         if isinstance(outputs, dict):
@@ -359,6 +360,7 @@ def main():
         fsq_commitment_loss_weight=args.fsq_commitment_loss_weight,
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
+        
     )
     
     # 设置回调函数
