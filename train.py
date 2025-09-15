@@ -61,8 +61,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
 
         # 前向传播
         outputs = self.model(audio)
-        print(outputs)
-        
+        fsq_dict=outputs.fsq_dict
         # 解析输出
         if isinstance(outputs, dict):
             reconstructed = outputs.get('reconstruction', outputs.get('output'))
@@ -92,9 +91,10 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         # 记录指标
         self.log('train/total_loss', total_loss, prog_bar=True, on_step=True, on_epoch=True)
         self.log('train/recon_loss', recon_loss, on_step=True, on_epoch=True)
-        self.log('train/fsq_loss', fsq_loss, on_step=True, on_epoch=True)
-        self.log('train/kl_loss', kl_loss, on_step=True, on_epoch=True)
+      
         self.log_dict(audio_loss_dict, prog_bar=False, logger=True, on_step=True, on_epoch=True)
+        self.log('train/aux_loss', fsq_dict.aux_loss, on_step=True, on_epoch=True)
+  
         
         # 如果有codes，记录codebook使用率
         if codes is not None:
@@ -129,8 +129,8 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
             codes = None
         
         # 计算重建损失
-        print(reconstructed.shape)
-        print(audio.shape)
+        # print(reconstructed.shape)
+        # print(audio.shape)
         recon_loss, audio_loss_dict = self.audio_loss(
             pred_waveform=reconstructed, 
             true_waveform=audio, 

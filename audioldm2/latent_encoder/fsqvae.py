@@ -1,6 +1,6 @@
 import torch
 import os
-
+import sys
 import torch.nn.functional as F
 import numpy as np
 from audioldm2.latent_diffusion.modules.ema import *
@@ -190,9 +190,11 @@ class AutoencoderFSQ(AutoencoderKL):
         posterior = posterior_output.latent_dist
 
         mean_latent = posterior.mode()
+        print(mean_latent)
         # print(mean_latent.shape)
         z_quantized, fsq_dict = self.quantizer(mean_latent, n_steps=n_steps)
-        
+        print(z_quantized)
+        sys.exit()
         if not return_dict:
             # 返回一个元组 (tuple)
             return (z_quantized, fsq_dict)
