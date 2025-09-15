@@ -390,10 +390,10 @@ def main():
     
     # 设置日志记录器
     loggers = [
-        TensorBoardLogger(
-            save_dir=args.output_dir,
-            name=args.experiment_name,
-        )
+        # TensorBoardLogger(
+        #     save_dir=args.output_dir,
+        #     name=args.experiment_name,
+        # )
     ]
     
     if args.use_wandb:
