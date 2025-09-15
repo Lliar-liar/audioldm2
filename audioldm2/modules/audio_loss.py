@@ -311,9 +311,9 @@ class AudioReconstructionLoss(nn.Module):
         
         # 确保波形有正确的维度
         if pred_waveform.dim() == 1:
-            pred_waveform = pred_waveform.unsqueeze(0).unsqueeze(0)
-        elif pred_waveform.dim() == 2:
             pred_waveform = pred_waveform.unsqueeze(0)
+        elif pred_waveform.dim() == 2:
+            pred_waveform = pred_waveform
             
         log_dict = {}
         
