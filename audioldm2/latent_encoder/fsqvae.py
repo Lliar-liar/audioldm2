@@ -105,6 +105,7 @@ class AutoencoderFSQ(AutoencoderKL):
             config_audio["preprocessing"]["mel"]["mel_fmin"],
             config_audio["preprocessing"]["mel"]["mel_fmax"],
         )
+        print(self.vocoder)
 
     def get_mel_from_wav_batch(self, audio_batch, _stft):
         if audio_batch.dim() == 3:
