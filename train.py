@@ -83,7 +83,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         )
         
         # 总损失
-        print(recon_loss, fsq_loss, kl_loss)
+        
         total_loss = recon_loss + fsq_loss + kl_loss
         
         # 记录指标
@@ -135,7 +135,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
             global_step = self.global_step,
             optimizer_idx = 0
         )
-        
+        print(recon_loss, fsq_loss, kl_loss)
         # 总损失
         total_loss = recon_loss + fsq_loss + kl_loss
         
