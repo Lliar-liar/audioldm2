@@ -11,6 +11,7 @@ from audioldm2.utilities.data.util import print0
 import random
 import torchaudio 
 import numpy as np
+import sys
 
 class AudioWaveformDataset(Dataset):
     """
@@ -158,4 +159,6 @@ class AudioWaveformDataset(Dataset):
             padding = torch.zeros((1, target_len - current_len))
             waveform = torch.cat([waveform, padding], dim=1)
         waveform= self.normalize_wav(waveform)
+        print(waveform)
+        sys.exit()
         return waveform
