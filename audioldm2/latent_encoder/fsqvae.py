@@ -191,11 +191,11 @@ class AutoencoderFSQ(AutoencoderKL):
 
         mean_latent = posterior.mode()
         
-        print(mean_latent.shape)
+        # print(mean_latent.shape)
         z_quantized, fsq_dict = self.quantizer(mean_latent, n_steps=n_steps)
-        print(mean_latent)
-        print(fsq_dict)
-        sys.exit()
+        # print(mean_latent)
+        # print(fsq_dict)
+        # sys.exit()
         if not return_dict:
             # 返回一个元组 (tuple)
             return (z_quantized, fsq_dict)
