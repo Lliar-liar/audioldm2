@@ -158,5 +158,5 @@ class AudioWaveformDataset(Dataset):
             padding = torch.zeros((1, target_len - current_len))
             waveform = torch.cat([waveform, padding], dim=1)
         waveform= self.normalize_wav(waveform)
-
+        waveform=waveform.squeeze(0)
         return waveform
