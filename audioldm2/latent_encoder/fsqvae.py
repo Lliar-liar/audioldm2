@@ -42,12 +42,7 @@ def _pad_spec(fbank, target_length=1024):
 
 
 class AutoencoderFSQ(AutoencoderKL):
-    """
-    一个集成了 FSQ (Finite Scalar Quantization) 的自编码器，
-    继承自 diffusers.AutoencoderKL 以便利用 from_pretrained 和其他 HF 生态功能。
-    
-    这个模型可以直接处理音频波形 (waveform) 作为输入。
-    """
+
     def __init__(
         self,
         # --- 继承自 AutoencoderKL 的参数 ---
