@@ -114,9 +114,6 @@ class AudioWaveformDataset(Dataset):
                 raise FileNotFoundError(f"Source media file not found: {abs_mp4_fp}")
 
         # 2. Prepare the final data dictionary
-        audio_waveform=audio_waveform.squeeze(0)
-        print(audio_waveform)
-        sys.exit()
         final_data = {
             'audio': audio_waveform, 
             "path": abs_mp4_fp,

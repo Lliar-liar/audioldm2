@@ -13,6 +13,8 @@ from audioldm2.latent_encoder.fsqvae import AutoencoderFSQ
 from audioldm2.utilities.data.audio_finetune_dataset import AudioWaveformDataset 
 from audioldm2.modules.audio_loss import AudioReconstructionLoss
 
+import sys
+
 
 class AudioVAEFSQLightningModule(pl.LightningModule):
     def __init__(
@@ -56,7 +58,8 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
             # 可能还有其他元数据
         else:
             audio = batch
-            
+        print(audio)
+        sys.exit()
         # 前向传播
         outputs = self.model(audio)
         print(outputs)
