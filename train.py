@@ -73,7 +73,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
             fsq_loss = 0.0
             kl_loss = 0.0
             codes = None
-        
+        reconstructed=reconstructed.squeeze(0)
         # 计算重建损失
         recon_loss, audio_loss_dict = self.audio_loss(
             pred_waveform=reconstructed, 
@@ -403,6 +403,7 @@ def main():
                 project="audio-vae-fsq",
                 name=unique_run_name,
                 save_dir=args.output_dir,
+                resume="never"
             )
         )
     
