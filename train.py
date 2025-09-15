@@ -61,7 +61,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
 
         # 前向传播
         outputs = self.model(audio)
-        fsq_dict=outputs.fsq_dict
+        fsq_dict=outputs["fsq_dict"]
         # 解析输出
         if isinstance(outputs, dict):
             reconstructed = outputs.get('reconstruction', outputs.get('output'))
