@@ -17,7 +17,7 @@ from typing import Union, Tuple
 
 
 from diffusers import AutoencoderKL
-from diffusers.models.modeling_outputs import AutoencoderKLOutput
+from diffusers.models.modeling_outputs import AutoencoderKLOutput, SpeechT5HifiGan
 from audioldm2.modules.regularizers import FSQRegularizer
 
 from audioldm2.utils import default_audioldm_config
@@ -66,8 +66,8 @@ class AutoencoderFSQ(AutoencoderKL):
         sampling_rate: int = 16000,
         target_mel_length: int = 1024,
     ):
-        # --- 首先，调用父类 (AutoencoderKL) 的 __init__ 方法 ---
-        # 注意：我们不再使用 quant_conv 和 post_quant_conv，所以将 use_*_conv 设为 False
+ 
+
         super().__init__(
             in_channels=in_channels, out_channels=out_channels,
             down_block_types=down_block_types, up_block_types=up_block_types,
@@ -104,6 +104,9 @@ class AutoencoderFSQ(AutoencoderKL):
             self.sampling_rate,
             config_audio["preprocessing"]["mel"]["mel_fmin"],
             config_audio["preprocessing"]["mel"]["mel_fmax"],
+        )
+        self.vocoder=SpeechT5HifiGan.from_pretrained(
+            "cvssp/audioldm2"
         )
         print(self.vocoder)
 
