@@ -410,10 +410,11 @@ def main():
         logger=loggers,
         log_every_n_steps=args.log_every_n_steps,
         val_check_interval=args.val_check_interval,
-        deterministic=True,
+        deterministic=False, 
         enable_checkpointing=True,
         enable_progress_bar=True,
         enable_model_summary=True,
+        
     )
     
     # 开始训练
