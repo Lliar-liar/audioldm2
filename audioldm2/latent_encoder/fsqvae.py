@@ -72,8 +72,8 @@ class AutoencoderFSQ(AutoencoderKL):
             act_fn=act_fn, latent_channels=latent_channels,
             norm_num_groups=norm_num_groups, sample_size=sample_size,
             scaling_factor=scaling_factor,
-            use_quant_conv=False,
-            use_post_quant_conv=False,
+            # use_quant_conv=False,
+            # use_post_quant_conv=False,
         )
 
         # --- 1. 初始化 FSQ Regularizer ---
@@ -191,7 +191,7 @@ class AutoencoderFSQ(AutoencoderKL):
         mean_latent = posterior.mode()
         print(torch.isfinite(mean_latent).all(),"mean latent")
         # print(mean_latent.shape)
-        z_quantized, fsq_dict = self.quantizer(mean_latent, n_steps=n_steps, inv_temperature=0.1)
+        z_quantized, fsq_dict = self.quantizer(mean_latent, n_steps=n_steps, inv_temperature=1)
         # print(mean_latent)
         # print(fsq_dict)
         # sys.exit()
