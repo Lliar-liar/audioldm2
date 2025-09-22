@@ -178,18 +178,18 @@ class AutoencoderFSQ(AutoencoderKL):
 
     def encode(self, x: torch.Tensor, return_dict: bool = True, n_steps: int = 0, duration :float=1.1) -> Union[AutoencoderKLOutput, Tuple]:
 
-        
+        print(torch.isfinite(x).all(),"x")
         fbank, _, _, = self.wav_to_fbank_batch(batch_waveforms=x, target_length=int(duration * 102.4), fn_STFT=self.fn_STFT)
- 
+
         mel_spectrogram = fbank.unsqueeze(1)
+        print(torch.isfinite(mel_spectrogram).all(),"mel_spectrogram")
         # print(mel_spectrogram.shape)
         # print(torch.isfinite(mel_spectrogram))
         posterior_output = super().encode(mel_spectrogram, return_dict=True)
         posterior = posterior_output.latent_dist
 
         mean_latent = posterior.mode()
-        print(mean_latent)
-        print(torch.isfinite(mean_latent).all(),0)
+        print(torch.isfinite(mean_latent).all(),"mean latent")
         # print(mean_latent.shape)
         z_quantized, fsq_dict = self.quantizer(mean_latent, n_steps=n_steps, inv_temperature=10)
         # print(mean_latent)
