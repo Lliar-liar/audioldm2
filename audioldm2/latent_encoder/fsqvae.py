@@ -86,7 +86,7 @@ class AutoencoderFSQ(AutoencoderKL):
             levels=fsq_levels,
             dim=latent_channels,
             use_projection=True, # FSQ 直接处理 VAE Encoder 的输出
-            commitment_loss_weight=fsq_commitment_loss_weight
+            commitment_loss_weight=fsq_commitment_loss_weight,
             entropy_loss_weight=0.0,
         )
         
