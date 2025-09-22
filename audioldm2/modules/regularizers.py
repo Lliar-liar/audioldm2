@@ -240,8 +240,8 @@ class FSQRegularizer(AbstractRegularizer):
         d - feature dimension
         c - number of codebook dim
         """
-        print(z.shape)
-        print(z)
+        # print(z.shape)
+        # print(z)
         is_img_or_video = z.ndim >= 4
         if is_img_or_video:
             z = rearrange(z, "b d ... -> b ... d")
