@@ -87,7 +87,7 @@ class AutoencoderFSQ(AutoencoderKL):
             dim=latent_channels,
             use_projection=True, # FSQ 直接处理 VAE Encoder 的输出
             # commitment_loss_weight=fsq_commitment_loss_weight,
-            commitment_loss_weight=0.0,
+            commitment_loss_weight=1e-6,
             entropy_loss_weight=0.0,
         )
         
@@ -188,7 +188,7 @@ class AutoencoderFSQ(AutoencoderKL):
         posterior = posterior_output.latent_dist
 
         mean_latent = posterior.mode()
-        
+        mean_latent = mean_latent * 0.1
         # print(mean_latent.shape)
         z_quantized, fsq_dict = self.quantizer(mean_latent, n_steps=n_steps, inv_temperature=10)
         # print(mean_latent)
