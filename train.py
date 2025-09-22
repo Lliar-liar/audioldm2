@@ -407,6 +407,7 @@ def main():
         max_epochs=args.epochs,
         accelerator="gpu",
         devices=4,  # 可以修改为多GPU训练
+        strategy=DDPStrategy(find_unused_parameters=True),
         precision=args.precision,
         gradient_clip_val=args.gradient_clip_val,
         accumulate_grad_batches=args.accumulate_grad_batches,
