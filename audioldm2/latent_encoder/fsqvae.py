@@ -3,8 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Union, Tuple, Optional
 from diffusers import AutoencoderKL
-from diffusers.models.modeling_outputs import AutoencoderKLOutput, DecoderOutput
-from diffusers.models.vae import DiagonalGaussianDistribution
+from diffusers.models.modeling_outputs import AutoencoderKLOutput
+from diffusers.models.autoencoders.vae import DecoderOutput,DiagonalGaussianDistribution
 
 
 class AutoencoderFSQ(AutoencoderKL):
