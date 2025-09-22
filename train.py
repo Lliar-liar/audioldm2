@@ -128,8 +128,8 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
             codes = None
         reconstructed=reconstructed.squeeze(0)
         # 计算重建损失
-        # print(reconstructed.shape)
-        # print(audio.shape)
+        print(reconstructed.shape)
+        print(audio.shape)
         recon_loss, audio_loss_dict = self.audio_loss(
             pred_waveform=reconstructed, 
             true_waveform=audio, 
