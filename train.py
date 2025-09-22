@@ -28,40 +28,19 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         lr_scheduler_type: str = "cosine",
         warmup_steps: int = 1000,
         audio_loss_config: Optional[Dict[str, Any]] = None,
-        aux_loss_weight: float = 1.0,
-        kl_loss_weight: float = 0.1,
-        gradient_checkpointing: bool = False,
-        freeze_vae_encoder: bool = False,
-        freeze_vae_decoder: bool = False,
+        aux_loss_weight=1,
     ):
         super().__init__()
         self.save_hyperparameters()
-        self.aux_loss_weight = aux_loss_weight
-        self.kl_loss_weight = kl_loss_weight
-        
-        # 初始化模型 - 使用新的AutoencoderFSQ
+        self.aux_loss_weight=aux_loss_weight
+        # 初始化模型
         self.model = AutoencoderFSQ(
             model_name=model_name,
-            subfolder="vae",  # 现在这个参数传给内部的from_pretrained
+            subfolder="vae",  
             fsq_levels=fsq_levels,
             fsq_commitment_loss_weight=fsq_commitment_loss_weight,
             torch_dtype=torch.float32,
-        )
-        
-        # 可选：冻结VAE的某些部分
-        if freeze_vae_encoder:
-            for param in self.model.vae.encoder.parameters():
-                param.requires_grad = False
-            print("Froze VAE encoder parameters")
-            
-        if freeze_vae_decoder:
-            for param in self.model.vae.decoder.parameters():
-                param.requires_grad = False
-            print("Froze VAE decoder parameters")
-        
-        # 可选：梯度检查点以节省内存
-        if gradient_checkpointing:
-            self.model.vae.enable_gradient_checkpointing()
+        ).train()
         
         # 初始化损失函数
         audio_loss_config = audio_loss_config or {}
@@ -71,214 +50,121 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         self.training_step_outputs = []
         self.validation_step_outputs = []
         
-    def forward(self, x, n_steps=None):
-        # 传递当前的训练步数给模型（用于FSQ温度调度）
-        if n_steps is None:
-            n_steps = self.global_step
-        return self.model(x, n_steps=n_steps)
+    def forward(self, x):
+        return self.model(x)
     
     def training_step(self, batch, batch_idx):
-        # 解析输入
+        # 假设batch是音频波形张量或字典
         if isinstance(batch, dict):
             audio = batch['audio']
-            metadata = {k: v for k, v in batch.items() if k != 'audio'}
+            # 可能还有其他元数据
         else:
             audio = batch
-            metadata = {}
-        
-        # 前向传播，传入当前步数用于FSQ温度调度
-        outputs = self.model(audio, n_steps=self.global_step, return_dict=True)
-        
+
+        # 前向传播
+        outputs = self.model(audio)
+        fsq_dict=outputs["fsq_dict"]
         # 解析输出
-        reconstructed = outputs['reconstruction']
-        fsq_dict = outputs['fsq_dict']
-        posterior = outputs.get('posterior', fsq_dict.get('posterior'))
-        z_quantized = outputs['quantized_latent']
-        z_unquantized = outputs.get('unquantized_latent', fsq_dict.get('unquantized'))
-        
-        # 处理批次维度（如果需要）
-        if reconstructed.dim() > audio.dim():
-            reconstructed = reconstructed.squeeze(0)
-        
-        # 1. 计算重建损失
+        if isinstance(outputs, dict):
+            reconstructed = outputs.get('reconstruction', outputs.get('output'))
+            codes = outputs.get('codes', None)
+        else:
+            reconstructed = outputs
+            codes = None
+        reconstructed=reconstructed.squeeze(0)
+        # print(reconstructed.shape)
+        # print(audio.shape)
+        # 计算重建损失
         recon_loss, audio_loss_dict = self.audio_loss(
             pred_waveform=reconstructed, 
             true_waveform=audio, 
-            pred_latent=z_quantized,  # 现在可以传入latent
-            true_latent=z_unquantized,  # 用于额外的latent space损失
-            global_step=self.global_step,
-            optimizer_idx=0
+            pred_latent=None, 
+            true_latent= None, 
+            global_step = self.global_step,
+            optimizer_idx = 0
         )
         
-        # 2. KL散度损失（如果有posterior）
-        kl_loss = torch.tensor(0.0).to(audio.device)
-        if posterior is not None:
-            try:
-                kl_loss = posterior.kl().mean()
-            except:
-                kl_loss = torch.tensor(0.0).to(audio.device)
+        # 总损失
         
-        # 3. FSQ辅助损失（commitment loss等）
-        aux_loss = fsq_dict.get("aux_loss", torch.tensor(0.0).to(audio.device))
-        
-        # 确保所有损失都是标量
-        if aux_loss.numel() > 1:
-            aux_loss = aux_loss.mean()
-        if kl_loss.numel() > 1:
-            kl_loss = kl_loss.mean()
-        
-        # 4. 总损失
-        total_loss = recon_loss + self.kl_loss_weight * kl_loss + self.aux_loss_weight * aux_loss
-        
-        # 5. 记录指标
+        total_loss = recon_loss + self.aux_loss_weight * fsq_dict["aux_loss"]
+        print(fsq_dict["aux_loss"])
+        # 记录指标
         self.log('train/total_loss', total_loss, prog_bar=True, on_step=True, on_epoch=True, sync_dist=True)
         self.log('train/recon_loss', recon_loss, on_step=True, on_epoch=True, sync_dist=True)
-        self.log('train/kl_loss', kl_loss, on_step=True, on_epoch=True, sync_dist=True)
-        self.log('train/aux_loss', aux_loss, on_step=True, on_epoch=True, sync_dist=True)
+      
+        self.log_dict(audio_loss_dict, prog_bar=False, logger=True, on_step=True, on_epoch=True, sync_dist=True)
+        self.log('train/aux_loss', fsq_dict["aux_loss"], on_step=True, on_epoch=True, sync_dist=True)
+
         
-        # 记录音频损失的各个组成部分
-        for key, value in audio_loss_dict.items():
-            self.log(f'train/{key}', value, on_step=True, on_epoch=True, sync_dist=True)
-        
-        # 6. 计算并记录FSQ相关指标
-        if 'codes' in fsq_dict:
-            codes = fsq_dict['codes']
+        # 如果有codes，记录codebook使用率
+        if codes is not None:
             unique_codes = torch.unique(codes).numel()
             total_codes = codes.numel()
             codebook_usage = unique_codes / total_codes
             self.log('train/codebook_usage', codebook_usage, on_step=True, on_epoch=True, sync_dist=True)
         
-        # 记录量化相关指标
-        if z_quantized is not None and z_unquantized is not None:
-            quantization_error = F.mse_loss(z_quantized.detach(), z_unquantized.detach())
-            self.log('train/quantization_error', quantization_error, on_step=True, on_epoch=True, sync_dist=True)
-        
-        # 记录梯度范数（用于调试）
-        if self.global_step % 100 == 0:
-            grad_norm = 0.0
-            for p in self.model.parameters():
-                if p.grad is not None:
-                    grad_norm += p.grad.norm(2).item() ** 2
-            grad_norm = grad_norm ** 0.5
-            self.log('train/grad_norm', grad_norm, on_step=True, sync_dist=True)
-        
         return total_loss
     
     def validation_step(self, batch, batch_idx):
-        # 解析输入
         if isinstance(batch, dict):
             audio = batch['audio']
         else:
             audio = batch
-        
-        # 只在第一个batch打印shape信息
-        if batch_idx == 0 and self.trainer.global_rank == 0:
-            print(f"Validation audio shape: {audio.shape}")
-        
-        # 前向传播（评估模式）
+            
+        # 前向传播
+        # 只在主进程打印以避免重复输出
+        if self.trainer.global_rank == 0:
+            print(audio.shape)
         with torch.no_grad():
-            outputs = self.model(audio, n_steps=self.global_step, return_dict=True)
+            outputs = self.model(audio)
         
+        fsq_dict=outputs["fsq_dict"]
         # 解析输出
-        reconstructed = outputs['reconstruction']
-        fsq_dict = outputs['fsq_dict']
-        posterior = outputs.get('posterior', fsq_dict.get('posterior'))
-        z_quantized = outputs['quantized_latent']
-        z_unquantized = outputs.get('unquantized_latent', fsq_dict.get('unquantized'))
-        
-        # 处理批次维度
-        if reconstructed.dim() > audio.dim():
-            reconstructed = reconstructed.squeeze(0)
-        
-        # 1. 计算重建损失
+        if isinstance(outputs, dict):
+            reconstructed = outputs.get('reconstruction', outputs.get('output'))
+            codes = outputs.get('codes', None)
+        else:
+            reconstructed = outputs
+            codes = None
+        reconstructed=reconstructed.squeeze(0)
+        # 计算重建损失
+        print(reconstructed.shape)
+        print(audio.shape)
         recon_loss, audio_loss_dict = self.audio_loss(
             pred_waveform=reconstructed, 
             true_waveform=audio, 
-            pred_latent=z_quantized,
-            true_latent=z_unquantized,
-            global_step=self.global_step,
-            optimizer_idx=0
+            pred_latent=None, 
+            true_latent= None, 
+            global_step = self.global_step,
+            optimizer_idx = 0
         )
+        # print(recon_loss, fsq_loss, kl_loss)
+        # 总损失
+        total_loss = recon_loss + self.aux_loss_weight * fsq_dict["aux_loss"]
         
-        # 2. KL损失
-        kl_loss = torch.tensor(0.0).to(audio.device)
-        if posterior is not None:
-            try:
-                kl_loss = posterior.kl().mean()
-            except:
-                kl_loss = torch.tensor(0.0).to(audio.device)
-        
-        # 3. FSQ损失
-        aux_loss = fsq_dict.get("aux_loss", torch.tensor(0.0).to(audio.device))
-        
-        # 确保所有损失都是标量
-        if aux_loss.numel() > 1:
-            aux_loss = aux_loss.mean()
-        if kl_loss.numel() > 1:
-            kl_loss = kl_loss.mean()
-        
-        # 4. 总损失
-        total_loss = recon_loss + self.kl_loss_weight * kl_loss + self.aux_loss_weight * aux_loss
-        
-        # 5. 记录指标
+        # 记录指标
         self.log('val/total_loss', total_loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
         self.log('val/recon_loss', recon_loss, on_step=False, on_epoch=True, sync_dist=True)
-        self.log('val/kl_loss', kl_loss, on_step=False, on_epoch=True, sync_dist=True)
-        self.log('val/aux_loss', aux_loss, on_step=False, on_epoch=True, sync_dist=True)
+
+        self.log_dict(audio_loss_dict, prog_bar=False, logger=True, on_step=True, on_epoch=True, sync_dist=True)
+        self.log('val/aux_loss', fsq_dict["aux_loss"], on_step=True, on_epoch=True, sync_dist=True)
+
+  
         
-        # 记录音频损失组成
-        for key, value in audio_loss_dict.items():
-            self.log(f'val/{key}', value, on_step=False, on_epoch=True, sync_dist=True)
-        
-        # 6. FSQ指标
-        if 'codes' in fsq_dict:
-            codes = fsq_dict['codes']
+        # 记录codebook使用率
+        if codes is not None:
             unique_codes = torch.unique(codes).numel()
             total_codes = codes.numel()
             codebook_usage = unique_codes / total_codes
             self.log('val/codebook_usage', codebook_usage, on_step=False, on_epoch=True, sync_dist=True)
         
-        # 量化误差
-        if z_quantized is not None and z_unquantized is not None:
-            quantization_error = F.mse_loss(z_quantized, z_unquantized)
-            self.log('val/quantization_error', quantization_error, on_step=False, on_epoch=True, sync_dist=True)
-        
-        # 每个epoch保存一些音频样本用于可视化
-        if batch_idx == 0 and self.logger:
-            # 选择前几个样本
-            num_samples = min(3, audio.shape[0])
-            for i in range(num_samples):
-                # 记录原始和重建的音频
-                if hasattr(self.logger, 'experiment'):
-                    self.logger.experiment.add_audio(
-                        f'audio/original_{i}',
-                        audio[i].cpu().numpy(),
-                        self.global_step,
-                        sample_rate=self.model.sampling_rate
-                    )
-                    self.logger.experiment.add_audio(
-                        f'audio/reconstructed_{i}',
-                        reconstructed[i].cpu().numpy(),
-                        self.global_step,
-                        sample_rate=self.model.sampling_rate
-                    )
-        
         return total_loss
     
     def configure_optimizers(self):
-        # 分离参数组（可选）
-        vae_params = list(self.model.vae.parameters())
-        fsq_params = list(self.model.quantizer.parameters())
-        
-        # 可以为不同的参数组设置不同的学习率
-        param_groups = [
-            {'params': vae_params, 'lr': self.hparams.learning_rate},
-            {'params': fsq_params, 'lr': self.hparams.learning_rate * 2}  # FSQ可能需要更高的学习率
-        ]
-        
         # 优化器
         optimizer = torch.optim.AdamW(
-            param_groups,
+            self.parameters(),
+            lr=self.hparams.learning_rate,
             weight_decay=self.hparams.weight_decay,
             betas=(0.9, 0.999)
         )
@@ -297,23 +183,17 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
                     "interval": "epoch",
                 }
             }
-        elif self.hparams.lr_scheduler_type == "cosine_with_warmup":
-            # 带warmup的cosine调度
-            from torch.optim.lr_scheduler import LambdaLR
-            
-            def lr_lambda(step):
-                if step < self.hparams.warmup_steps:
-                    return step / self.hparams.warmup_steps
-                else:
-                    progress = (step - self.hparams.warmup_steps) / (self.trainer.estimated_stepping_batches - self.hparams.warmup_steps)
-                    return 0.5 * (1.0 + torch.cos(torch.tensor(progress * 3.14159)))
-            
-            scheduler = LambdaLR(optimizer, lr_lambda)
+        elif self.hparams.lr_scheduler_type == "step":
+            scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=10,
+                gamma=0.5
+            )
             return {
                 "optimizer": optimizer,
                 "lr_scheduler": {
                     "scheduler": scheduler,
-                    "interval": "step",
+                    "interval": "epoch",
                 }
             }
         elif self.hparams.lr_scheduler_type == "reduce_on_plateau":
@@ -334,16 +214,6 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
             }
         else:
             return optimizer
-    
-    def on_train_epoch_end(self):
-        """在每个epoch结束时记录额外的信息"""
-        # 可以在这里添加额外的日志或检查点逻辑
-        pass
-    
-    def on_validation_epoch_end(self):
-        """在验证epoch结束时记录额外的信息"""
-        pass
-
 
 
 class AudioDataModule(pl.LightningDataModule):
