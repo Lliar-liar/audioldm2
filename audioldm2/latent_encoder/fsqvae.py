@@ -45,7 +45,7 @@ class AutoencoderFSQ(nn.Module):
             dim=self.latent_channels,
             use_projection=True,
             commitment_loss_weight=fsq_commitment_loss_weight,
-            entropy_loss_weight=0.1,
+            entropy_loss_weight=0.0,
         )
         
         # 3. 音频处理参数
