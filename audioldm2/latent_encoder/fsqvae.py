@@ -91,6 +91,21 @@ class AutoencoderFSQ(AutoencoderKL):
             entropy_loss_weight=0.0,
         )
         
+        with torch.no_grad():
+            if hasattr(self.quantizer, 'project_in'):
+                # 使用非常小的初始化
+                nn.init.normal_(self.quantizer.project_in.weight, mean=0, std=0.02)
+                nn.init.zeros_(self.quantizer.project_in.bias)
+            
+            if hasattr(self.quantizer, 'project_out'):
+                nn.init.normal_(self.quantizer.project_out.weight, mean=0, std=0.02)
+                nn.init.zeros_(self.quantizer.project_out.bias)
+            
+            # 重新计算implicit_codebook
+            self.quantizer.implicit_codebook = self.quantizer.indices_to_codes(
+                torch.arange(self.quantizer.codebook_size), 
+                project_out=False
+            )
         # --- 2. 初始化音频预处理模块 ---
         self.sampling_rate = sampling_rate
         self.target_mel_length = target_mel_length
