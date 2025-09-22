@@ -369,7 +369,7 @@ def main():
         weight_decay=args.weight_decay,
     )
     
-    # 设置回调函数
+    # 设置回调函数 - 基础回调
     callbacks = [
         ModelCheckpoint(
             dirpath=os.path.join(args.output_dir, args.experiment_name, "checkpoints"),
@@ -380,7 +380,6 @@ def main():
             save_last=True,
             verbose=True,
         ),
-        LearningRateMonitor(logging_interval="step"),
         EarlyStopping(
             monitor="val/total_loss",
             patience=10,
@@ -407,6 +406,9 @@ def main():
                 reinit=True  # 重新初始化
             )
         )
+        
+        # 只在有logger的时候添加LearningRateMonitor
+        callbacks.append(LearningRateMonitor(logging_interval="step"))
     
     # 初始化训练器
     trainer = Trainer(
@@ -417,7 +419,7 @@ def main():
         gradient_clip_val=args.gradient_clip_val,
         accumulate_grad_batches=args.accumulate_grad_batches,
         callbacks=callbacks,
-        logger=loggers if global_rank == 0 else False,  # 只有主进程使用logger
+        logger=loggers or None,  # 使用None而不是False
         log_every_n_steps=args.log_every_n_steps,
         val_check_interval=args.val_check_interval,
         deterministic=False, 
