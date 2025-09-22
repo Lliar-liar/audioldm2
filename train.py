@@ -40,7 +40,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
             fsq_levels=fsq_levels,
             fsq_commitment_loss_weight=fsq_commitment_loss_weight,
             torch_dtype=torch.float32,
-        )
+        ).train()
         
         # 初始化损失函数
         audio_loss_config = audio_loss_config or {}
