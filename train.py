@@ -28,7 +28,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         lr_scheduler_type: str = "cosine",
         warmup_steps: int = 1000,
         audio_loss_config: Optional[Dict[str, Any]] = None,
-        aux_loss_weight=30,
+        aux_loss_weight=1,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -87,14 +87,14 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         # 总损失
         
         total_loss = recon_loss + self.aux_loss_weight * fsq_dict["aux_loss"]
-        
+        print(fsq_dict["aux_loss"])
         # 记录指标
         self.log('train/total_loss', total_loss, prog_bar=True, on_step=True, on_epoch=True, sync_dist=True)
         self.log('train/recon_loss', recon_loss, on_step=True, on_epoch=True, sync_dist=True)
       
         self.log_dict(audio_loss_dict, prog_bar=False, logger=True, on_step=True, on_epoch=True, sync_dist=True)
         self.log('train/aux_loss', fsq_dict["aux_loss"], on_step=True, on_epoch=True, sync_dist=True)
-  
+
         
         # 如果有codes，记录codebook使用率
         if codes is not None:
