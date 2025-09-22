@@ -87,8 +87,8 @@ class AutoencoderFSQ(AutoencoderKL):
             dim=latent_channels,
             use_projection=True, # FSQ 直接处理 VAE Encoder 的输出
             # commitment_loss_weight=fsq_commitment_loss_weight,
-            commitment_loss_weight=1e-6,
-            entropy_loss_weight=0.0,
+            commitment_loss_weight=0.25,
+            entropy_loss_weight=0.1,
         )
         
         # --- 2. 初始化音频预处理模块 ---
