@@ -28,7 +28,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         lr_scheduler_type: str = "cosine",
         warmup_steps: int = 1000,
         audio_loss_config: Optional[Dict[str, Any]] = None,
-        aux_loss_weight=1,
+        aux_loss_weight=500,
     ):
         super().__init__()
         self.save_hyperparameters()
