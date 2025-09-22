@@ -241,7 +241,7 @@ class FSQRegularizer(AbstractRegularizer):
         c - number of codebook dim
         """
         # print(z.shape)
-        print(torch.isfinite(z).all(),1)
+        # print(torch.isfinite(z).all(),1)
         is_img_or_video = z.ndim >= 4
         if is_img_or_video:
             z = rearrange(z, "b d ... -> b ... d")
@@ -250,9 +250,9 @@ class FSQRegularizer(AbstractRegularizer):
         # assert z.shape[-1] == self.dim, f"expected dimension of {self.dim} but found dimension of {z.shape[-1]}"
         orig_dtype = z.dtype
         z = z.float()
-        print(torch.isfinite(z).all(),2)
+        # print(torch.isfinite(z).all(),2)
         z = self.project_in(z)
-        print(torch.isfinite(z).all(),3)
+        # print(torch.isfinite(z).all(),3)
 
         z = rearrange(z, "b n (c d) -> b n c d", c=self.num_codebooks)
 
