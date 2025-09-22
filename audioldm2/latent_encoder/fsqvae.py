@@ -72,8 +72,8 @@ class AutoencoderFSQ(AutoencoderKL):
             act_fn=act_fn, latent_channels=latent_channels,
             norm_num_groups=norm_num_groups, sample_size=sample_size,
             scaling_factor=scaling_factor,
-            # use_quant_conv=True,
-            # use_post_quant_conv=True,
+            use_quant_conv=False,
+            use_post_quant_conv=False,
         )
 
         # --- 1. 初始化 FSQ Regularizer ---
@@ -87,7 +87,7 @@ class AutoencoderFSQ(AutoencoderKL):
             dim=latent_channels,
             use_projection=True, # FSQ 直接处理 VAE Encoder 的输出
             # commitment_loss_weight=fsq_commitment_loss_weight,
-            commitment_loss_weight=0.25,
+            commitment_loss_weight=1e-6,
             entropy_loss_weight=0.0,
         )
         
