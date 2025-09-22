@@ -127,7 +127,7 @@ class AutoencoderFSQ(AutoencoderKL):
         return enc
 
     def encode(self, x: torch.Tensor, return_dict: bool = True, n_steps: int = 0, 
-               duration: float = 1.1, inv_temperature: float = 10) -> Union[dict, Tuple]:
+               duration: float = 1.1, inv_temperature: float = 1) -> Union[dict, Tuple]:
         """
         完整的编码流程：音频预处理 -> VAE编码 -> FSQ量化
         """
