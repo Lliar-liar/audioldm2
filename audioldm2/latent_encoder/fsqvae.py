@@ -41,8 +41,8 @@ class AutoencoderFSQ(AutoencoderKL):
             norm_num_groups=norm_num_groups,
             sample_size=sample_size,
             scaling_factor=scaling_factor,
-            use_quant_conv=False,  # 禁用原始量化层
-            use_post_quant_conv=False,
+            use_quant_conv=True,  
+            use_post_quant_conv=True,
         )
         
         # 初始化FSQ
