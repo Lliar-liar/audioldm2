@@ -406,7 +406,7 @@ def main():
     trainer = Trainer(
         max_epochs=args.epochs,
         accelerator="gpu",
-        devices=4,  # 可以修改为多GPU训练
+        # devices=4,  # 可以修改为多GPU训练
         strategy=DDPStrategy(find_unused_parameters=True),
         precision=args.precision,
         gradient_clip_val=args.gradient_clip_val,
