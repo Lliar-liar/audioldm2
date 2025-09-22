@@ -240,61 +240,93 @@ class FSQRegularizer(AbstractRegularizer):
         d - feature dimension
         c - number of codebook dim
         """
-        # print(z.shape)
-        # print(z)
+        # 检查输入
+        print(f"[1] Input z: shape={z.shape}, finite={torch.isfinite(z).all()}, range=[{z.min():.4f}, {z.max():.4f}]")
+        
         is_img_or_video = z.ndim >= 4
         if is_img_or_video:
             z = rearrange(z, "b d ... -> b ... d")
             z, ps = pack_one(z, "b * d")
 
-        # assert z.shape[-1] == self.dim, f"expected dimension of {self.dim} but found dimension of {z.shape[-1]}"
         orig_dtype = z.dtype
         z = z.float()
 
+        # 投影前
+        print(f"[2] Before project_in: finite={torch.isfinite(z).all()}, range=[{z.min():.4f}, {z.max():.4f}]")
         z = self.project_in(z)
+        # 投影后
+        print(f"[3] After project_in: finite={torch.isfinite(z).all()}, range=[{z.min():.4f}, {z.max():.4f}]")
+
         z = rearrange(z, "b n (c d) -> b n c d", c=self.num_codebooks)
 
         with torch.autocast("cuda", enabled=False):
             
             original_input = z
+            print(f"[4] original_input: finite={torch.isfinite(original_input).all()}, range=[{original_input.min():.4f}, {original_input.max():.4f}]")
+            
             codes = self.quantize(z)
+            print(f"[5] After quantize: finite={torch.isfinite(codes).all()}, range=[{codes.min():.4f}, {codes.max():.4f}]")
+            
             indices = self.codes_to_indices(codes)
+            print(f"[6] indices: finite={torch.isfinite(indices.float()).all()}, shape={indices.shape}")
 
             if self.training:
                 self.update_codebook_usage(indices)
 
             if self.entropy_loss_weight > 0 or self.commitment_loss_weight > 0:
-                # the same as euclidean distance up to a constant
-                # print(f"original_input dtype: {original_input.dtype}")
-                # print(f"implicit_codebook dtype: {self.implicit_codebook.dtype}")
-                if self.implicit_codebook.dtype != original_input.dtype:   # keep it generic
+                # 检查implicit_codebook
+                print(f"[7] implicit_codebook: finite={torch.isfinite(self.implicit_codebook).all()}, range=[{self.implicit_codebook.min():.4f}, {self.implicit_codebook.max():.4f}]")
+                
+                if self.implicit_codebook.dtype != original_input.dtype:
                     print(f"!!!!!!Converting implicit_codebook dtype from {self.implicit_codebook.dtype} to {original_input.dtype}")
                     self.implicit_codebook = self.implicit_codebook.to(original_input.dtype)
+                
+                # 计算距离
                 distance = -2 * torch.einsum("... i d, j d -> ... i j", original_input, self.implicit_codebook)
-                prob = (-distance * inv_temperature).softmax(dim=-1)
+                print(f"[8] distance: finite={torch.isfinite(distance).all()}, range=[{distance.min():.4f}, {distance.max():.4f}]")
+                
+                # 计算logits（softmax之前）
+                logits = -distance * inv_temperature
+                print(f"[9] logits (before softmax): finite={torch.isfinite(logits).all()}, range=[{logits.min():.4f}, {logits.max():.4f}], inv_temp={inv_temperature}")
+                
+                # Softmax
+                prob = logits.softmax(dim=-1)
+                print(f"[10] prob (after softmax): finite={torch.isfinite(prob).all()}, range=[{prob.min():.4f}, {prob.max():.4f}]")
+                
                 per_sample_probs = rearrange(prob, "b n ... -> (b n) ...")
+                
+                # 计算熵
                 per_sample_entropy = entropy(per_sample_probs).mean()
+                print(f"[11] per_sample_entropy: finite={torch.isfinite(per_sample_entropy).all()}, value={per_sample_entropy.item():.4f}")
+                
                 # distribution over all available tokens in the batch
                 avg_prob = reduce(per_sample_probs, "... c d -> c d", "mean")
                 avg_prob = maybe_distributed_mean(avg_prob)
+                print(f"[12] avg_prob: finite={torch.isfinite(avg_prob).all()}, range=[{avg_prob.min():.4f}, {avg_prob.max():.4f}]")
+                
                 codebook_entropy = entropy(avg_prob).mean()
+                print(f"[13] codebook_entropy: finite={torch.isfinite(codebook_entropy).all()}, value={codebook_entropy.item():.4f}")
+                
                 entropy_aux_loss = per_sample_entropy - self.diversity_gamma * codebook_entropy
+                print(f"[14] entropy_aux_loss: finite={torch.isfinite(entropy_aux_loss).all()}, value={entropy_aux_loss.item():.4f}")
+                
                 # commit loss
                 commit_loss = F.mse_loss(original_input, codes.detach(), reduction="none")
+                print(f"[15] commit_loss (before mean): finite={torch.isfinite(commit_loss).all()}, range=[{commit_loss.min():.4f}, {commit_loss.max():.4f}]")
+                
                 commit_loss = commit_loss.mean()
+                print(f"[16] commit_loss (after mean): finite={torch.isfinite(commit_loss).all()}, value={commit_loss.item():.4f}")
             else:
                 entropy_aux_loss = per_sample_entropy = codebook_entropy = commit_loss = self.zero
 
-            # codes = codes.type(orig_dtype)
-
         codes = rearrange(codes, "b n c d -> b n (c d)")
         out = self.project_out(codes)
+        print(f"[17] After project_out: finite={torch.isfinite(out).all()}, range=[{out.min():.4f}, {out.max():.4f}]")
 
         # reconstitute image or video dimensions
         if is_img_or_video:
             out = unpack_one(out, ps, "b * d")
             out = rearrange(out, "b ... d -> b d ...")
-
             indices = unpack_one(indices, ps, "b * c")
 
         if not self.keep_num_codebooks_dim:
@@ -303,5 +335,19 @@ class FSQRegularizer(AbstractRegularizer):
         aux_loss = (
             entropy_aux_loss * self.calculate_entropy_loss_weight(n_steps) + commit_loss * self.commitment_loss_weight
         )
+        print(f"[18] Final aux_loss: finite={torch.isfinite(aux_loss).all()}, value={aux_loss.item():.4f}")
+        print(f"    entropy_loss_weight={self.calculate_entropy_loss_weight(n_steps)}, commitment_loss_weight={self.commitment_loss_weight}")
+        
+        # 如果发现NaN，打印更多信息
+        if not torch.isfinite(aux_loss).all():
+            print("="*50)
+            print("NaN DETECTED! Detailed info:")
+            print(f"  entropy_aux_loss: {entropy_aux_loss}")
+            print(f"  commit_loss: {commit_loss}")
+            print(f"  entropy_loss_weight: {self.calculate_entropy_loss_weight(n_steps)}")
+            print(f"  commitment_loss_weight: {self.commitment_loss_weight}")
+            print("="*50)
+            # 可选：抛出异常立即停止
+            # raise ValueError("NaN detected in aux_loss!")
 
         return out, dict(indices=indices, aux_loss=aux_loss, codebook_usage=self.codebook_usage)
