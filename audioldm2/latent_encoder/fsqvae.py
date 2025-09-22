@@ -188,7 +188,7 @@ class AutoencoderFSQ(AutoencoderKL):
         posterior = posterior_output.latent_dist
 
         mean_latent = posterior.mode()
-        mean_latent = mean_latent * 0.1
+      
         # print(mean_latent.shape)
         z_quantized, fsq_dict = self.quantizer(mean_latent, n_steps=n_steps, inv_temperature=10)
         # print(mean_latent)
