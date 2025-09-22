@@ -372,6 +372,7 @@ class AudioReconstructionLoss(nn.Module):
             # 5. GAN相关损失
             if weights['gan'] > 0 and global_step >= self.gan_start_step:
                 # 对抗损失
+                
                 logits_fake = self.discriminator(pred_waveform)
                 g_loss_gan = self._hinge_g_loss(logits_fake)
                 weighted_loss = weights['gan'] * g_loss_gan

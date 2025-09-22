@@ -396,7 +396,7 @@ def main():
         loggers.append(
             WandbLogger(
                 project="audio-vae-fsq",
-                name=unique_run_name,
+                # name=unique_run_name,
                 save_dir=args.output_dir,
                 resume="never"
             )
