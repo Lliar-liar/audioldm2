@@ -186,9 +186,9 @@ class AutoencoderFSQ(AutoencoderKL):
         posterior = posterior_output.latent_dist
 
         mean_latent = posterior.mode()
-        mean_latent = mean_latent * 0.1 
+        
         # print(mean_latent.shape)
-        z_quantized, fsq_dict = self.quantizer(mean_latent, n_steps=n_steps)
+        z_quantized, fsq_dict = self.quantizer(mean_latent, n_steps=n_steps, inv_temperature=10)
         # print(mean_latent)
         # print(fsq_dict)
         # sys.exit()
@@ -204,7 +204,7 @@ class AutoencoderFSQ(AutoencoderKL):
 
 
     def decode(self, z: torch.Tensor, return_dict: bool = True, **kwargs) -> Union[torch.Tensor, Tuple]:
-        z=z*10.
+
         outputs=super().decode(z=z, return_dict=True)
         
         if not return_dict:
