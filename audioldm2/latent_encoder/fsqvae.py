@@ -55,6 +55,10 @@ class AutoencoderFSQ(AutoencoderKL):
             entropy_loss_weight=0.0,
         )
         
+        # 数值稳定性参数
+        self.eps = 1e-8
+        self.max_val = 50.0
+        
         # 音频处理参数
         self.sampling_rate = sampling_rate
         self.target_mel_length = target_mel_length
@@ -81,24 +85,33 @@ class AutoencoderFSQ(AutoencoderKL):
             torch_dtype=torch.float32
         )
 
+    def _stabilize_tensor(self, x: torch.Tensor, name: str = "tensor") -> torch.Tensor:
+        """数值稳定化处理"""
+        # 检查NaN/Inf
+        if torch.isnan(x).any() or torch.isinf(x).any():
+            print(f"Warning: NaN/Inf detected in {name}, replacing with zeros")
+            x = torch.nan_to_num(x, nan=0.0, posinf=self.max_val, neginf=-self.max_val)
+        
+        # 限制范围
+        x = torch.clamp(x, -self.max_val, self.max_val)
+        return x
+
     def _encode_no_quant(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        内部编码方法，不进行量化，直接使用encoder
-        """
-        batch_size, num_channels, height, width = x.shape
+        """内部编码方法，不进行量化"""
+        # 稳定化输入
+        x = self._stabilize_tensor(x, "encoder_input")
         
-        # 处理tiling情况
-        if self.use_tiling and (width > self.tile_sample_min_size or height > self.tile_sample_min_size):
-            return self._tiled_encode_no_quant(x)
+        if self.use_tiling and (x.shape[-1] > self.tile_sample_min_size or x.shape[-2] > self.tile_sample_min_size):
+            enc = self._tiled_encode_no_quant(x)
+        else:
+            enc = self.encoder(x)
         
-        # 直接使用encoder，不使用quant_conv
-        enc = self.encoder(x)
+        # 稳定化输出
+        enc = self._stabilize_tensor(enc, "encoder_output")
         return enc
     
     def _tiled_encode_no_quant(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Tiled编码，不进行量化
-        """
+        """Tiled编码，不进行量化"""
         overlap_size = int(self.tile_sample_min_size * (1 - self.tile_overlap_factor))
         blend_extent = int(self.tile_latent_min_size * self.tile_overlap_factor)
         row_limit = self.tile_latent_min_size - blend_extent
@@ -109,6 +122,7 @@ class AutoencoderFSQ(AutoencoderKL):
             for j in range(0, x.shape[3], overlap_size):
                 tile = x[:, :, i : i + self.tile_sample_min_size, j : j + self.tile_sample_min_size]
                 tile = self.encoder(tile)
+                tile = self._stabilize_tensor(tile, "tile_encode")
                 row.append(tile)
             rows.append(row)
             
@@ -127,40 +141,78 @@ class AutoencoderFSQ(AutoencoderKL):
         return enc
 
     def encode(self, x: torch.Tensor, return_dict: bool = True, n_steps: int = 0, 
-               duration: float = 1.1, inv_temperature: float = 1) -> Union[dict, Tuple]:
+               duration: float = 1.1) -> Union[dict, Tuple]:
         """
-        完整的编码流程：音频预处理 -> VAE编码 -> FSQ量化
+        编码流程：音频预处理 -> VAE编码 -> FSQ量化
         """
-        # 1. 音频预处理（如果输入是音频）
+        # 1. 音频预处理
         if hasattr(self, 'fn_STFT') and x.dim() in [1, 2, 3]:
-            # 处理音频输入
+            # 归一化音频
+            x = self._stabilize_tensor(x, "audio_input")
+            if x.abs().max() > 1.0:
+                x = x / (x.abs().max() + self.eps)
+            
             fbank, _, _ = self.wav_to_fbank_batch(
                 batch_waveforms=x, 
                 target_length=int(duration * 102.4), 
                 fn_STFT=self.fn_STFT
             )
             mel_spectrogram = fbank.unsqueeze(1)
+            mel_spectrogram = self._stabilize_tensor(mel_spectrogram, "mel_spectrogram")
         else:
-            # 假设输入已经是mel谱图
-            mel_spectrogram = x
+            mel_spectrogram = self._stabilize_tensor(x, "input")
         
-        # 2. VAE编码（不使用super）
+        # 2. VAE编码
         if self.use_slicing and mel_spectrogram.shape[0] > 1:
             encoded_slices = [self._encode_no_quant(x_slice) for x_slice in mel_spectrogram.split(1)]
             h = torch.cat(encoded_slices)
         else:
             h = self._encode_no_quant(mel_spectrogram)
         
-        # 3. 创建分布并采样
-        posterior = DiagonalGaussianDistribution(h)
-        z = posterior.mode()  # 或使用 posterior.sample()
+        # 3. 创建稳定的分布
+        # 分离均值和对数方差
+        mean, logvar = torch.chunk(h, 2, dim=1)
         
-        # 4. FSQ量化
-        z_quantized, fsq_dict = self.quantizer(z, n_steps=n_steps, inv_temperature=inv_temperature)
+        # 限制logvar范围
+        logvar = torch.clamp(logvar, -30.0, 20.0)
         
-        # 5. 添加额外信息
-        fsq_dict['posterior'] = posterior  # 保存原始分布用于KL loss
-        fsq_dict['unquantized'] = z  # 保存未量化的latent
+        # 重新组合
+        h_stable = torch.cat([mean, logvar], dim=1)
+        posterior = DiagonalGaussianDistribution(h_stable)
+        
+        # 4. 获取latent（训练时采样，推理时用mode）
+        if self.training:
+            z = posterior.sample()
+        else:
+            z = posterior.mode()
+        
+        z = self._stabilize_tensor(z, "latent")
+        
+        # 5. FSQ量化
+        # 自适应温度调度
+        if n_steps < 1000:
+            inv_temperature = 0.1
+        elif n_steps < 5000:
+            inv_temperature = 0.5
+        else:
+            inv_temperature = min(1.0, 0.5 + (n_steps - 5000) / 10000)
+        
+        # 在float32精度下进行量化以提高稳定性
+        with torch.cuda.amp.autocast(enabled=False):
+            z_float = z.float()
+            try:
+                z_quantized, fsq_dict = self.quantizer(z_float, n_steps=n_steps, inv_temperature=inv_temperature)
+                z_quantized = z_quantized.to(z.dtype)
+            except Exception as e:
+                print(f"FSQ quantization error: {e}, using bypass")
+                z_quantized = z
+                fsq_dict = {"aux_loss": torch.tensor(0.0).to(z.device)}
+        
+        z_quantized = self._stabilize_tensor(z_quantized, "quantized_latent")
+        
+        # 确保fsq_dict包含必要的信息
+        fsq_dict['posterior'] = posterior
+        fsq_dict['unquantized'] = z
         
         if not return_dict:
             return (z_quantized, fsq_dict)
@@ -173,20 +225,19 @@ class AutoencoderFSQ(AutoencoderKL):
         }
 
     def _decode_no_post_quant(self, z: torch.Tensor) -> torch.Tensor:
-        """
-        内部解码方法，不使用post_quant_conv
-        """
-        if self.use_tiling and (z.shape[-1] > self.tile_latent_min_size or z.shape[-2] > self.tile_latent_min_size):
-            return self._tiled_decode_no_post_quant(z)
+        """内部解码方法"""
+        z = self._stabilize_tensor(z, "decoder_input")
         
-        # 直接使用decoder，不使用post_quant_conv
-        dec = self.decoder(z)
+        if self.use_tiling and (z.shape[-1] > self.tile_latent_min_size or z.shape[-2] > self.tile_latent_min_size):
+            dec = self._tiled_decode_no_post_quant(z)
+        else:
+            dec = self.decoder(z)
+        
+        dec = self._stabilize_tensor(dec, "decoder_output")
         return dec
     
     def _tiled_decode_no_post_quant(self, z: torch.Tensor) -> torch.Tensor:
-        """
-        Tiled解码，不使用post_quant_conv
-        """
+        """Tiled解码"""
         overlap_size = int(self.tile_latent_min_size * (1 - self.tile_overlap_factor))
         blend_extent = int(self.tile_sample_min_size * self.tile_overlap_factor)
         row_limit = self.tile_sample_min_size - blend_extent
@@ -197,6 +248,7 @@ class AutoencoderFSQ(AutoencoderKL):
             for j in range(0, z.shape[3], overlap_size):
                 tile = z[:, :, i : i + self.tile_latent_min_size, j : j + self.tile_latent_min_size]
                 decoded = self.decoder(tile)
+                decoded = self._stabilize_tensor(decoded, "tile_decode")
                 row.append(decoded)
             rows.append(row)
             
@@ -216,19 +268,18 @@ class AutoencoderFSQ(AutoencoderKL):
 
     def decode(self, z: torch.FloatTensor, return_dict: bool = True, 
                generator=None, to_waveform: bool = False) -> Union[DecoderOutput, torch.FloatTensor]:
-        """
-        完整的解码流程：FSQ latents -> VAE解码 -> (可选)转换为音频
-        """
-        # 1. VAE解码（不使用super）
+        """解码流程"""
+        # VAE解码
         if self.use_slicing and z.shape[0] > 1:
             decoded_slices = [self._decode_no_post_quant(z_slice) for z_slice in z.split(1)]
             decoded = torch.cat(decoded_slices)
         else:
             decoded = self._decode_no_post_quant(z)
         
-        # 2. 如果需要，转换为音频波形
+        # 转换为音频（如果需要）
         if to_waveform and hasattr(self, 'vocoder'):
             decoded = self.mel_spectrogram_to_waveform(decoded)
+            decoded = self._stabilize_tensor(decoded, "waveform_output")
         
         if not return_dict:
             return (decoded,)
@@ -236,72 +287,37 @@ class AutoencoderFSQ(AutoencoderKL):
         return DecoderOutput(sample=decoded)
 
     def forward(self, sample: torch.Tensor, n_steps: int = 0, return_dict: bool = True,
-                sample_posterior: bool = False, inv_temperature: float = 1.0, 
-                to_waveform: bool = True, duration: float = 1.1):
+                duration: float = 1.1):
         """
-        完整的前向传播：编码 -> FSQ量化 -> 解码
-        
-        Args:
-            sample: 输入音频或mel谱图
-            n_steps: 训练步数（用于FSQ）
-            return_dict: 是否返回字典
-            sample_posterior: 是否从分布中采样（而不是使用mode）
-            inv_temperature: FSQ的温度参数
-            to_waveform: 是否将输出转换为音频波形
-            duration: 音频时长
+        前向传播：编码 -> 量化 -> 解码
+        返回重建结果和FSQ字典供外部计算损失
         """
-        # 1. 编码和量化
+        # 编码和量化
         encode_outputs = self.encode(
             sample, 
             return_dict=True, 
             n_steps=n_steps,
-            duration=duration,
-            inv_temperature=inv_temperature
+            duration=duration
         )
         
         z_quantized = encode_outputs["quantized_latent"]
         fsq_dict = encode_outputs["fsq_dict"]
-        posterior = encode_outputs["posterior"]
-        z_unquantized = encode_outputs["unquantized_latent"]
         
-        # 2. 解码
-        reconstruction = self.decode(z_quantized, return_dict=True, to_waveform=to_waveform).sample
-        
-        # 3. 计算损失
-        if self.training:
-            # 重建损失
-            if to_waveform:
-                rec_loss = F.mse_loss(reconstruction, sample)
-            else:
-                # 如果是mel谱图，需要先转换
-                target_mel = self.wav_to_fbank_batch(sample, int(duration * 102.4), self.fn_STFT)[0]
-                rec_loss = F.mse_loss(reconstruction, target_mel.unsqueeze(1))
-            
-            # KL损失
-            kl_loss = posterior.kl().mean()
-            
-            # FSQ相关损失（commitment loss等）
-            fsq_loss = fsq_dict.get('loss', 0.0)
-            
-            total_loss = rec_loss + 0.1 * kl_loss + fsq_loss
-        else:
-            total_loss = None
+        # 解码为波形
+        reconstruction = self.decode(z_quantized, return_dict=True, to_waveform=True).sample
         
         if not return_dict:
-            return reconstruction, fsq_dict, total_loss
+            return reconstruction, fsq_dict
         
         return {
             "reconstruction": reconstruction,
             "quantized_latent": z_quantized,
-            "unquantized_latent": z_unquantized,
-            "posterior": posterior,
-            "fsq_dict": fsq_dict,
-            "loss": total_loss,
-            "rec_loss": rec_loss if self.training else None,
-            "kl_loss": kl_loss if self.training else None,
+            "unquantized_latent": encode_outputs["unquantized_latent"],
+            "posterior": encode_outputs["posterior"],
+            "fsq_dict": fsq_dict
         }
 
-    # 保留音频处理的辅助方法
+    # 音频处理辅助方法保持不变
     def wav_to_fbank_batch(self, batch_waveforms, target_length=1024, fn_STFT=None, device=None):
         """音频转mel谱图"""
         assert fn_STFT is not None
