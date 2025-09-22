@@ -72,8 +72,8 @@ class AutoencoderFSQ(AutoencoderKL):
             act_fn=act_fn, latent_channels=latent_channels,
             norm_num_groups=norm_num_groups, sample_size=sample_size,
             scaling_factor=scaling_factor,
-            use_quant_conv=False,
-            use_post_quant_conv=False,
+            use_quant_conv=True,
+            use_post_quant_conv=True,
         )
 
         # --- 1. 初始化 FSQ Regularizer ---
@@ -87,8 +87,8 @@ class AutoencoderFSQ(AutoencoderKL):
             dim=latent_channels,
             use_projection=True, # FSQ 直接处理 VAE Encoder 的输出
             # commitment_loss_weight=fsq_commitment_loss_weight,
-            commitment_loss_weight=1e-6,
-            entropy_loss_weight=0.0,
+            commitment_loss_weight=0.25,
+            entropy_loss_weight=0.1,
         )
         
         # --- 2. 初始化音频预处理模块 ---
@@ -191,7 +191,7 @@ class AutoencoderFSQ(AutoencoderKL):
         mean_latent = posterior.mode()
         print(torch.isfinite(mean_latent).all(),"mean latent")
         # print(mean_latent.shape)
-        z_quantized, fsq_dict = self.quantizer(mean_latent, n_steps=n_steps, inv_temperature=1)
+        z_quantized, fsq_dict = self.quantizer(mean_latent, n_steps=n_steps, inv_temperature=5)
         # print(mean_latent)
         # print(fsq_dict)
         # sys.exit()
