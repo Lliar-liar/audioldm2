@@ -319,7 +319,8 @@ def main():
     parser.add_argument("--experiment_name", type=str, default="audio_vae_fsq", help="Experiment name")
     parser.add_argument("--save_top_k", type=int, default=3, help="Save top k checkpoints")
     parser.add_argument("--log_every_n_steps", type=int, default=50, help="Log every n steps")
-    parser.add_argument("--val_check_interval", type=float, default=1.0, help="Validation check interval")
+    parser.add_argument("--val_check_interval", type=float, default=0.5, help="Validation check interval")
+    parser.add_argument("--limit_val_batches", type=float, default=128)
     parser.add_argument("--use_wandb", action="store_true", help="Use Weights & Biases logging")
     
     # 其他参数
@@ -422,6 +423,7 @@ def main():
         logger=loggers or None,  # 使用None而不是False
         log_every_n_steps=args.log_every_n_steps,
         val_check_interval=args.val_check_interval,
+        limit_val_batches=args.limit_val_batches,
         deterministic=False, 
         enable_checkpointing=True,
         enable_progress_bar=True if global_rank == 0 else False,  # 只在主进程显示进度条
