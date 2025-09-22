@@ -188,13 +188,13 @@ class AutoencoderFSQ(nn.Module):
         z = self._stabilize_tensor(z, "latent")
         
         # 4. FSQ量化（带温度调度）
-        if n_steps < 1000:
-            inv_temperature = 0.1
-        elif n_steps < 5000:
-            inv_temperature = 0.5
-        else:
-            inv_temperature = min(1.0, 0.5 + (n_steps - 5000) / 10000)
-        
+        # if n_steps < 1000:
+        #     inv_temperature = 0.1
+        # elif n_steps < 5000:
+        #     inv_temperature = 0.5
+        # else:
+        #     inv_temperature = min(1.0, 0.5 + (n_steps - 5000) / 10000)
+        inv_temperature = 100
         # 在float32下进行量化以提高稳定性
         with torch.cuda.amp.autocast(enabled=False):
             z_float = z.float()

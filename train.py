@@ -87,7 +87,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         # 总损失
         
         total_loss = recon_loss + self.aux_loss_weight * fsq_dict["aux_loss"]
-        print(fsq_dict["aux_loss"])
+        # print(fsq_dict["aux_loss"])
         # 记录指标
         self.log('train/total_loss', total_loss, prog_bar=True, on_step=True, on_epoch=True, sync_dist=True)
         self.log('train/recon_loss', recon_loss, on_step=True, on_epoch=True, sync_dist=True)
