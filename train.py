@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any
 from audioldm2.latent_encoder.fsqvae import AutoencoderFSQ 
 from audioldm2.utilities.data.audio_finetune_dataset import AudioWaveformDataset 
 from audioldm2.modules.audio_loss import AudioReconstructionLoss
-
+from pytorch_lightning.strategies import DDPStrategy
 import sys
 import time
 
