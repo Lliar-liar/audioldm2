@@ -8,6 +8,7 @@ from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from torch.utils.data import DataLoader
 import argparse
 from typing import Optional, Dict, Any
+import uuid
 
 from audioldm2.latent_encoder.fsqvae import AutoencoderFSQ 
 from audioldm2.utilities.data.audio_finetune_dataset import AudioWaveformDataset 
@@ -88,11 +89,11 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         total_loss = recon_loss + self.aux_loss_weight * fsq_dict["aux_loss"]
         
         # 记录指标
-        self.log('train/total_loss', total_loss, prog_bar=True, on_step=True, on_epoch=True)
-        self.log('train/recon_loss', recon_loss, on_step=True, on_epoch=True)
+        self.log('train/total_loss', total_loss, prog_bar=True, on_step=True, on_epoch=True, sync_dist=True)
+        self.log('train/recon_loss', recon_loss, on_step=True, on_epoch=True, sync_dist=True)
       
-        self.log_dict(audio_loss_dict, prog_bar=False, logger=True, on_step=True, on_epoch=True)
-        self.log('train/aux_loss', fsq_dict["aux_loss"], on_step=True, on_epoch=True)
+        self.log_dict(audio_loss_dict, prog_bar=False, logger=True, on_step=True, on_epoch=True, sync_dist=True)
+        self.log('train/aux_loss', fsq_dict["aux_loss"], on_step=True, on_epoch=True, sync_dist=True)
   
         
         # 如果有codes，记录codebook使用率
@@ -100,7 +101,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
             unique_codes = torch.unique(codes).numel()
             total_codes = codes.numel()
             codebook_usage = unique_codes / total_codes
-            self.log('train/codebook_usage', codebook_usage, on_step=True, on_epoch=True)
+            self.log('train/codebook_usage', codebook_usage, on_step=True, on_epoch=True, sync_dist=True)
         
         return total_loss
     
@@ -111,7 +112,9 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
             audio = batch
             
         # 前向传播
-        print(audio.shape)
+        # 只在主进程打印以避免重复输出
+        if self.trainer.global_rank == 0:
+            print(audio.shape)
         with torch.no_grad():
             outputs = self.model(audio)
         
@@ -140,11 +143,11 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
         total_loss = recon_loss + self.aux_loss_weight * fsq_dict["aux_loss"]
         
         # 记录指标
-        self.log('val/total_loss', total_loss, prog_bar=True, on_step=False, on_epoch=True)
-        self.log('val/recon_loss', recon_loss, on_step=False, on_epoch=True)
+        self.log('val/total_loss', total_loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        self.log('val/recon_loss', recon_loss, on_step=False, on_epoch=True, sync_dist=True)
 
-        self.log_dict(audio_loss_dict, prog_bar=False, logger=True, on_step=True, on_epoch=True)
-        self.log('train/aux_loss', fsq_dict["aux_loss"], on_step=True, on_epoch=True)
+        self.log_dict(audio_loss_dict, prog_bar=False, logger=True, on_step=True, on_epoch=True, sync_dist=True)
+        self.log('val/aux_loss', fsq_dict["aux_loss"], on_step=True, on_epoch=True, sync_dist=True)
 
   
         
@@ -153,7 +156,7 @@ class AudioVAEFSQLightningModule(pl.LightningModule):
             unique_codes = torch.unique(codes).numel()
             total_codes = codes.numel()
             codebook_usage = unique_codes / total_codes
-            self.log('val/codebook_usage', codebook_usage, on_step=False, on_epoch=True)
+            self.log('val/codebook_usage', codebook_usage, on_step=False, on_epoch=True, sync_dist=True)
         
         return total_loss
     
@@ -333,6 +336,10 @@ def main():
     # 创建输出目录
     os.makedirs(args.output_dir, exist_ok=True)
     
+    # 获取当前进程的rank
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    global_rank = int(os.environ.get("RANK", 0))
+    
     # 准备音频波形参数
     audio_waveform_params = {
         'sample_rate': args.sample_rate,
@@ -360,7 +367,6 @@ def main():
         fsq_commitment_loss_weight=args.fsq_commitment_loss_weight,
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
-        
     )
     
     # 设置回调函数
@@ -383,22 +389,22 @@ def main():
         ),
     ]
     
-    # 设置日志记录器
-    loggers = [
-        # TensorBoardLogger(
-        #     save_dir=args.output_dir,
-        #     name=args.experiment_name,
-        # )
-    ]
+    # 设置日志记录器 - 只在主进程创建
+    loggers = []
     
-    if args.use_wandb:
+    if args.use_wandb and global_rank == 0:  # 只在主进程创建WandB logger
+        # 为这次运行创建唯一的ID，避免resume冲突
+        unique_id = f"{args.experiment_name}-{int(time.time())}-{uuid.uuid4().hex[:8]}"
         unique_run_name = f"{args.experiment_name}-{int(time.time())}"
+        
         loggers.append(
             WandbLogger(
                 project="audio-vae-fsq",
-                # name=unique_run_name,
+                name=unique_run_name,
+                id=unique_id,  # 使用唯一ID避免冲突
                 save_dir=args.output_dir,
-                resume="never"
+                resume="never",  # 不resume
+                reinit=True  # 重新初始化
             )
         )
     
@@ -406,20 +412,18 @@ def main():
     trainer = Trainer(
         max_epochs=args.epochs,
         accelerator="gpu",
-        # devices=4,  # 可以修改为多GPU训练
         strategy=DDPStrategy(find_unused_parameters=True),
         precision=args.precision,
         gradient_clip_val=args.gradient_clip_val,
         accumulate_grad_batches=args.accumulate_grad_batches,
         callbacks=callbacks,
-        logger=loggers,
+        logger=loggers if global_rank == 0 else False,  # 只有主进程使用logger
         log_every_n_steps=args.log_every_n_steps,
         val_check_interval=args.val_check_interval,
         deterministic=False, 
         enable_checkpointing=True,
-        enable_progress_bar=True,
-        enable_model_summary=True,
-        
+        enable_progress_bar=True if global_rank == 0 else False,  # 只在主进程显示进度条
+        enable_model_summary=True if global_rank == 0 else False,  # 只在主进程显示模型摘要
     )
     
     # 开始训练
@@ -429,10 +433,11 @@ def main():
         ckpt_path=args.resume_from_checkpoint
     )
     
-    # 保存最终模型
-    final_model_path = os.path.join(args.output_dir, args.experiment_name, "final_model.pt")
-    torch.save(model.state_dict(), final_model_path)
-    print(f"Final model saved to {final_model_path}")
+    # 保存最终模型 - 只在主进程保存
+    if global_rank == 0:
+        final_model_path = os.path.join(args.output_dir, args.experiment_name, "final_model.pt")
+        torch.save(model.state_dict(), final_model_path)
+        print(f"Final model saved to {final_model_path}")
 
 
 if __name__ == "__main__":
