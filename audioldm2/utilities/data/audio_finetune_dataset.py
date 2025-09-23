@@ -124,7 +124,10 @@ class AudioWaveformDataset(Dataset):
         if not torch.all(torch.isfinite(audio_waveform)):
             print0(f"[bold red]FATAL DATA ERROR: NaN or inf detected in waveform from file: {abs_mp4_fp}. Resampling.[/bold red]")
             return self.__getitem__(random.randint(0, len(self) - 1))
-        
+        if audio_waveform.dim() != 1:
+            print(f"DATA SHAPE ERROR: Waveform dimension is {audio_waveform.dim()} (expected 1) from file: {abs_mp4_fp}. Resampling.")
+            return self.__getitem__(random.randint(0, len(self) - 1))
+            
         return final_data
 
     def _load_audio_waveform_from_mp4(self, mp4_path: str) -> torch.Tensor:
@@ -158,5 +161,5 @@ class AudioWaveformDataset(Dataset):
             padding = torch.zeros((1, target_len - current_len))
             waveform = torch.cat([waveform, padding], dim=1)
         waveform= self.normalize_wav(waveform)
-        waveform=waveform.squeeze()
+        waveform=waveform.squeeze(0)
         return waveform
