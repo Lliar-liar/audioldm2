@@ -3,7 +3,7 @@ import torch
 import torchaudio
 import soundfile as sf
 from pathlib import Path
-
+import os
 from train import AudioVAEFSQLightningModule
 
 
@@ -44,12 +44,13 @@ def reconstruct_audio(audio_path: str, checkpoint_path: str, output_dir: str, de
     output_dir = output_dir
     
     # 保存重建音频
-    recon_path = output_dir / f"{input_path.stem}_reconstructed.wav"
+
+    recon_path = os.path.join(output_dir , f"{input_path.stem}_reconstructed.wav")
     sf.write(str(recon_path), reconstructed.numpy().T, 16000)
     print(f"✓ Saved: {recon_path}")
     
     # 保存原始音频（处理后）
-    original_path = output_dir / f"{input_path.stem}_original_16k.wav"
+    original_path = os.path.join(output_dir , f"{input_path.stem}_original_16k.wav")
     sf.write(str(original_path), waveform.cpu()[0].numpy().T, 16000)
     print(f"✓ Saved: {original_path}")
     
