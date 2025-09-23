@@ -131,13 +131,13 @@ class AudioReconstructionLoss(nn.Module):
     def __init__(self,
                 # 重建损失权重
                 latent_loss_weight: float = 1.0,
-                waveform_l1_loss_weight: float = 1.0,
+                waveform_l1_loss_weight: float = 0.1,
                 multi_res_spec_loss_weight: float = 45.0,
                 mel_perceptual_weight: float = 10.0,
                 
                 # GAN相关权重
                 gan_loss_weight: float = 0.1,
-                gan_start_step: int = 10000,
+                gan_start_step: int = 1000000000,
                 gan_feature_loss_weight: float = 2.0,
                 
                 # 模型参数
