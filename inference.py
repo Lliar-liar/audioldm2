@@ -37,7 +37,7 @@ def reconstruct_audio(audio_path: str, checkpoint_path: str, output_dir: str, de
     with torch.no_grad():
         waveform = waveform.unsqueeze(0).to(device)  # 添加batch维度
         output = model(waveform, return_dict=True)
-        reconstructed = output['output'].cpu()[0]  # 移除batch维度
+        reconstructed = output['reconstruction'].cpu()[0]  # 移除batch维度
     
     # 保存结果
     input_path = Path(audio_path)
