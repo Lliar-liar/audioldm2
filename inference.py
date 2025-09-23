@@ -61,8 +61,8 @@ def reconstruct_audio(audio_path: str, checkpoint_path: str, output_dir: str, de
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3:
-        print("Usage: python simple_inference.py <audio_file> <checkpoint>")
+    if len(sys.argv) != 4:
+        print("Usage: python simple_inference.py <audio_file> <checkpoint> <output_dir>")
         sys.exit(1)
     
     audio_file = sys.argv[1]
