@@ -46,12 +46,12 @@ def reconstruct_audio(audio_path: str, checkpoint_path: str, output_dir: str, de
     # 保存重建音频
 
     recon_path = os.path.join(output_dir , f"{input_path.stem}_reconstructed.wav")
-    sf.write(str(recon_path), reconstructed.numpy().T, 16000)
+    sf.write(recon_path, reconstructed.numpy().T, 16000)
     print(f"✓ Saved: {recon_path}")
     
     # 保存原始音频（处理后）
     original_path = os.path.join(output_dir , f"{input_path.stem}_original_16k.wav")
-    sf.write(str(original_path), waveform.cpu()[0].numpy().T, 16000)
+    sf.write(original_path, waveform.cpu()[0].numpy().T, 16000)
     print(f"✓ Saved: {original_path}")
     
     # 计算简单指标
