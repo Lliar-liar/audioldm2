@@ -36,7 +36,7 @@ def reconstruct_audio(audio_path: str, checkpoint_path: str, output_dir: str, de
     print("Reconstructing...")
     with torch.no_grad():
         waveform = waveform.unsqueeze(0).to(device)  # 添加batch维度
-        output = model(waveform, return_dict=True)
+        output = model(waveform, return_dict=True,duration=3)
         reconstructed = output['reconstruction'].cpu()[0]  # 移除batch维度
     
     # 保存结果
@@ -54,11 +54,8 @@ def reconstruct_audio(audio_path: str, checkpoint_path: str, output_dir: str, de
     sf.write(original_path, waveform.cpu()[0].numpy().T, 16000)
     print(f"✓ Saved: {original_path}")
     
-    # 计算简单指标
-    mse = torch.mean((waveform.cpu() - reconstructed.unsqueeze(0)) ** 2).item()
-    print(f"\nMSE: {mse:.6f}")
     
-    return str(recon_path)
+    return recon_path
 
 
 if __name__ == '__main__':
