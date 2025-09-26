@@ -4,6 +4,7 @@ import torchaudio
 import torch.nn as nn
 import torch.nn.functional as F
 import torchaudio.transforms as T
+from typing import Dict, Union, List, Optional
 import soundfile as sf
 from pathlib import Path
 import os
