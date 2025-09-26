@@ -99,6 +99,14 @@ class MelSpectrogramLoss(nn.Module):
         loss = F.l1_loss(pred_log_mel, true_log_mel)
         
         return loss
+def normalize_wav(self, waveform):
+        waveform = waveform - torch.mean(waveform)
+        
+        # 2. Peak normalization and scaling
+        # Add a small epsilon to avoid division by zero
+        waveform = waveform / (torch.max(torch.abs(waveform)) + 1e-8)
+        
+        return waveform * 0.5
 
 def reconstruct_audio(audio_path: str, checkpoint_path: str, output_dir: str, device: str = 'cuda'):
     """重建音频文件"""
@@ -115,7 +123,7 @@ def reconstruct_audio(audio_path: str, checkpoint_path: str, output_dir: str, de
     # 加载音频
     print(f"Loading audio from {audio_path}")
     waveform, sr = torchaudio.load(audio_path)
-    
+    waveform=normalize_wav(waveform)
     # 重采样到16kHz（如果需要）
     if sr != 16000:
         resampler = torchaudio.transforms.Resample(sr, 16000)
