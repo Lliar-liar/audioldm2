@@ -99,7 +99,7 @@ class MelSpectrogramLoss(nn.Module):
         loss = F.l1_loss(pred_log_mel, true_log_mel)
         
         return loss
-def normalize_wav(self, waveform):
+def normalize_wav(waveform):
         waveform = waveform - torch.mean(waveform)
         
         # 2. Peak normalization and scaling
