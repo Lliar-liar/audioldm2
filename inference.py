@@ -1,10 +1,14 @@
 import sys
 import torch
 import torchaudio
+import torch.nn as nn
+import torch.nn.functional as F
+import torchaudio.transforms as T
 import soundfile as sf
 from pathlib import Path
 import os
 from train import AudioVAEFSQLightningModule
+
 class MultiResolutionSTFTLoss(nn.Module):
     """改进的多分辨率STFT损失，参考AudioLDM2"""
     def __init__(self,
