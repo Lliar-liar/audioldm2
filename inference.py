@@ -148,6 +148,8 @@ def reconstruct_audio(audio_path: str, checkpoint_path: str, output_dir: str, de
     print(f"✓ Saved: {original_path}")
     stft_loss_fn=MultiResolutionSTFTLoss()
     mel_loss_fn=MelSpectrogramLoss()
+    waveform=waveform.squeeze()[:48000]
+    reconstructed=reconstructed.squeeze()[:48000]
     print(waveform.shape, reconstructed.shape)
     stft_loss=stft_loss_fn(reconstructed.to("cpu"),waveform.to("cpu"))
     mel_loss=mel_loss_fn(reconstructed.to("cpu"),waveform.to("cpu"))
